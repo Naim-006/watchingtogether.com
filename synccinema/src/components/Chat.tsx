@@ -35,7 +35,7 @@ interface ChatProps {
 export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(true); // Start expanded by default
   const [isTyping, setIsTyping] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -49,7 +49,6 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
-  const [dragDisabled, setDragDisabled] = useState(false);
   
   const isMobile = () => window.innerWidth < 768;
 
@@ -99,7 +98,6 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
       let newW = r.w;  
       let newH = r.h;  
 
-      // Directions: n, s, e, w  
       if (direction.includes('e')) newW = r.w + dx;  
       if (direction.includes('w')) newW = r.w - dx;  
       if (direction.includes('s')) newH = r.h + dy;  
@@ -338,18 +336,25 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
     }
   };
 
-  // Handle close button click with proper touch handling
+  // Handle close button with proper event handling for mobile
   const handleClose = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setIsOpen(false);
   }, []);
 
-  // Handle fullscreen toggle with proper touch handling
+  // Handle open button
+  const handleOpen = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsOpen(true);
+  }, []);
+
+  // Handle fullscreen toggle
   const handleFullscreenToggle = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsFullscreen(f => !f);
+    setIsFullscreen(prev => !prev);
   }, []);
 
   const MessageItem = ({ msg }: { msg: Message }) => {
@@ -573,8 +578,8 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
 
       <Draggable  
         nodeRef={draggableRef}  
-        cancel=".no-drag, .drag-cancel" // Add drag-cancel class to prevent dragging on buttons
-        disabled={isFullscreen || dragDisabled} // Disable drag when fullscreen or when interacting with buttons
+        cancel=".no-drag, .drag-cancel, button, input, textarea, [role='button'], .react-draggable-cancel"  
+        disabled={isFullscreen}  
         onStart={() => setIsDragging(true)}  
         onStop={() => setIsDragging(false)}  
       >  
@@ -594,13 +599,15 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
             bottom: keyboardOffset > 0 ? `${keyboardOffset + 8}px` : undefined,  
           }}  
         >  
-          <AnimatePresence>  
+          <AnimatePresence mode="wait">
             {isOpen ? (  
               <motion.div  
+                key="chat-open"
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}  
                 animate={{ opacity: 1, scale: 1, y: 0 }}  
                 exit={{ opacity: 0, scale: 0.9, y: 20 }}  
-                className="bg-black/40 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-[0_0_50px_-12px_rgba(0,0,0,0.5)] flex flex-col group/chat relative"  
+                transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                className="bg-black/40 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-[0_0_50px_-12px_rgba(0,0,0,0.5)] flex flex-col group/chat relative overflow-hidden"  
                 style={{ height: isFullscreen ? '100%' : isMobile() ? '70vh' : `${chatSize.h}px` }}  
               >  
                 {/* 8-Directional Resize Handles */}  
@@ -617,31 +624,33 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
                   </>  
                 )}  
 
-                {/* Header - added drag-cancel class to all interactive elements */}  
+                {/* Header - all interactive buttons have drag-cancel class */}  
                 <div   
                   ref={headerRef}  
                   className="px-4 py-3 border-b border-white/10 flex items-center justify-between bg-white/5 shrink-0"  
                 >  
-                  <div className="flex items-center gap-3 cursor-move">  
+                  <div className="flex items-center gap-3 cursor-move drag-handle">  
                     <MessageSquare className="w-4 h-4 text-emerald-500" />  
                     <div className="flex flex-col">  
                       <span className="font-semibold text-sm leading-tight">Room Chat</span>  
                       <span className="text-[10px] text-emerald-500 font-medium leading-tight">{onlineCount} Online</span>  
                     </div>  
                   </div>  
-                  <div className="flex items-center gap-1 drag-cancel">  
+                  <div className="flex items-center gap-1">  
                     <button  
                       onClick={handleFullscreenToggle}  
-                      onTouchEnd={handleFullscreenToggle} // Add touch end handler
-                      className="p-1.5 hover:bg-white/10 rounded-lg transition-colors active:bg-white/20"  
+                      onTouchEnd={handleFullscreenToggle}
+                      type="button"
+                      className="drag-cancel p-1.5 hover:bg-white/10 rounded-lg transition-colors active:bg-white/20"  
                       title={isFullscreen ? 'Minimize' : 'Fullscreen'}  
                     >  
                       {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}  
                     </button>  
                     <button   
                       onClick={handleClose}  
-                      onTouchEnd={handleClose} // Add touch end handler
-                      className="p-1.5 hover:bg-white/10 rounded-lg transition-colors active:bg-white/20"  
+                      onTouchEnd={handleClose}
+                      type="button"
+                      className="drag-cancel p-1.5 hover:bg-white/10 rounded-lg transition-colors active:bg-white/20"  
                     >  
                       <X className="w-3.5 h-3.5" />  
                     </button>  
@@ -660,18 +669,18 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
                 </div>  
 
                 {replyTo && (  
-                  <div className="px-4 py-2 bg-emerald-500/10 border-t border-emerald-500/20 flex items-center justify-between drag-cancel">  
+                  <div className="drag-cancel px-4 py-2 bg-emerald-500/10 border-t border-emerald-500/20 flex items-center justify-between">  
                     <div className="text-[10px] truncate">  
                       Replying to <span className="font-bold">{replyTo.username}</span>  
                     </div>  
-                    <button onClick={() => setReplyTo(null)} className="drag-cancel"><X className="w-3 h-3" /></button>  
+                    <button onClick={() => setReplyTo(null)} type="button" className="drag-cancel p-1 hover:bg-white/10 rounded"><X className="w-3 h-3" /></button>  
                   </div>  
                 )}  
 
-                <form onSubmit={sendMessage} className="no-drag p-4 bg-white/5 border-t border-white/10 drag-cancel">  
+                <form onSubmit={sendMessage} className="no-drag p-4 bg-white/5 border-t border-white/10">  
                   <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*" className="hidden" />  
                   <div className="flex items-center gap-2 bg-black/40 rounded-xl px-3 py-2 border border-white/5 focus-within:border-emerald-500/50 transition-colors">  
-                    <button type="button" onClick={() => fileInputRef.current?.click()} className="p-1 hover:text-emerald-500 drag-cancel">  
+                    <button type="button" onClick={() => fileInputRef.current?.click()} className="drag-cancel p-1 hover:text-emerald-500">  
                       <ImageIcon className="w-4 h-4" />  
                     </button>  
                     <button  
@@ -681,7 +690,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
                       onMouseLeave={isRecording ? stopRecording : undefined}  
                       onTouchStart={startRecording}  
                       onTouchEnd={stopRecording}  
-                      className={cn("p-1 transition-colors drag-cancel", isRecording ? "text-red-500 animate-pulse" : "hover:text-emerald-500")}  
+                      className={cn("drag-cancel p-1 transition-colors", isRecording ? "text-red-500 animate-pulse" : "hover:text-emerald-500")}  
                     >  
                       <Mic className="w-4 h-4" />  
                     </button>  
@@ -693,17 +702,23 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
                       className="flex-1 bg-transparent outline-none text-sm"  
                       disabled={isRecording}  
                     />  
-                    <button type="submit" className="p-1 text-emerald-500 drag-cancel">  
+                    <button type="submit" className="drag-cancel p-1 text-emerald-500">  
                       <Send className="w-4 h-4" />  
                     </button>  
                   </div>  
                 </form>  
               </motion.div>  
             ) : (  
-              <button  
-                onClick={() => { setIsOpen(true); }}  
-                onTouchEnd={() => { setIsOpen(true); }}  
-                className="w-14 h-14 bg-emerald-600 rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform relative drag-cancel"  
+              <motion.button
+                key="chat-closed"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                transition={{ type: "spring", damping: 20 }}
+                onClick={handleOpen}  
+                onTouchEnd={handleOpen}
+                type="button"
+                className="drag-cancel w-14 h-14 bg-emerald-600 rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform relative"  
               >  
                 <MessageSquare className="w-6 h-6 text-white" />  
                 {unreadCount > 0 && (  
@@ -711,7 +726,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
                     {unreadCount}  
                   </span>  
                 )}  
-              </button>  
+              </motion.button>  
             )}  
           </AnimatePresence>  
         </div>  
