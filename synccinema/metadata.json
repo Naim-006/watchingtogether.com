@@ -1,0 +1,8 @@
+{
+  "name": "SyncCinema",
+  "description": "A real-time synchronized co-watching platform with chat, media sharing, and calling features.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
