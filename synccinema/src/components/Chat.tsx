@@ -49,6 +49,8 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
+  const [dragDisabled, setDragDisabled] = useState(false);
+  
   const isMobile = () => window.innerWidth < 768;
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -57,6 +59,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<Blob[]>([]);
   const resizeStartRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
 
   const isOpenRef = useRef(isOpen);
   useEffect(() => {
@@ -118,7 +121,6 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
     window.addEventListener('touchmove', onMove, { passive: false });  
     window.addEventListener('mouseup', onUp);  
     window.addEventListener('touchend', onUp);
-
   }, [chatSize]);
 
   // Initial History Load
@@ -155,7 +157,6 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
       }  
     };  
     fetchHistory();
-
   }, [roomId]);
 
   useEffect(() => {
@@ -221,7 +222,6 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
       socket.off('user:typing');  
       socket.off('room:update');  
     };
-
   }, []);
 
   useEffect(() => {
@@ -252,7 +252,6 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
     setInput('');  
     setReplyTo(null);  
     handleTyping(false);
-
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -281,7 +280,6 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
       setIsUploading(false);  
       if (fileInputRef.current) fileInputRef.current.value = '';  
     }
-
   };
 
   const startRecording = async () => {
@@ -300,7 +298,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
         try {  
           setIsUploading(true);  
           const { uploadToCloudinary } = await import('../lib/cloudinary');  
-          const url = await uploadToCloudinary(audioBlob, 'video'); // Cloudinary treats audio as video resource-type usually or auto  
+          const url = await uploadToCloudinary(audioBlob, 'video');  
 
           const message: Message = {  
             id: Math.random().toString(36).substr(2, 9),  
@@ -325,7 +323,6 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
     } catch (err) {  
       console.error('Could not start recording:', err);  
     }
-
   };
 
   const stopRecording = () => {
@@ -340,6 +337,20 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
       socket.emit('user:typing', { roomId, username, isTyping: typing });
     }
   };
+
+  // Handle close button click with proper touch handling
+  const handleClose = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsOpen(false);
+  }, []);
+
+  // Handle fullscreen toggle with proper touch handling
+  const handleFullscreenToggle = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsFullscreen(f => !f);
+  }, []);
 
   const MessageItem = ({ msg }: { msg: Message }) => {
     const itemRef = useRef<HTMLDivElement>(null);
@@ -553,7 +564,6 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
         )}  
       </div>  
     );
-
   };
 
   return (
@@ -563,8 +573,8 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
 
       <Draggable  
         nodeRef={draggableRef}  
-        cancel=".no-drag"  
-        disabled={isFullscreen}  
+        cancel=".no-drag, .drag-cancel" // Add drag-cancel class to prevent dragging on buttons
+        disabled={isFullscreen || dragDisabled} // Disable drag when fullscreen or when interacting with buttons
         onStart={() => setIsDragging(true)}  
         onStop={() => setIsDragging(false)}  
       >  
@@ -607,35 +617,36 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
                   </>  
                 )}  
 
-                {/* Header - UPDATED CROSS BUTTON FIX */}
-                <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between cursor-move bg-white/5 shrink-0">
-                  <div className="flex items-center gap-3">
-                    <MessageSquare className="w-4 h-4 text-emerald-500" />
-                    <div className="flex flex-col">
-                      <span className="font-semibold text-sm leading-tight">Room Chat</span>
-                      <span className="text-[10px] text-emerald-500 font-medium leading-tight">{onlineCount} Online</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => setIsFullscreen(f => !f)}
-                      className="p-2 hover:bg-white/10 rounded-lg transition-colors touch-manipulation"
-                      title={isFullscreen ? 'Minimize' : 'Fullscreen'}
-                    >
-                      {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-                    </button>
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsOpen(false);
-                      }} 
-                      className="p-2 hover:bg-white/10 rounded-lg transition-colors touch-manipulation"
-                      type="button"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
+                {/* Header - added drag-cancel class to all interactive elements */}  
+                <div   
+                  ref={headerRef}  
+                  className="px-4 py-3 border-b border-white/10 flex items-center justify-between bg-white/5 shrink-0"  
+                >  
+                  <div className="flex items-center gap-3 cursor-move">  
+                    <MessageSquare className="w-4 h-4 text-emerald-500" />  
+                    <div className="flex flex-col">  
+                      <span className="font-semibold text-sm leading-tight">Room Chat</span>  
+                      <span className="text-[10px] text-emerald-500 font-medium leading-tight">{onlineCount} Online</span>  
+                    </div>  
+                  </div>  
+                  <div className="flex items-center gap-1 drag-cancel">  
+                    <button  
+                      onClick={handleFullscreenToggle}  
+                      onTouchEnd={handleFullscreenToggle} // Add touch end handler
+                      className="p-1.5 hover:bg-white/10 rounded-lg transition-colors active:bg-white/20"  
+                      title={isFullscreen ? 'Minimize' : 'Fullscreen'}  
+                    >  
+                      {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}  
+                    </button>  
+                    <button   
+                      onClick={handleClose}  
+                      onTouchEnd={handleClose} // Add touch end handler
+                      className="p-1.5 hover:bg-white/10 rounded-lg transition-colors active:bg-white/20"  
+                    >  
+                      <X className="w-3.5 h-3.5" />  
+                    </button>  
+                  </div>  
+                </div>  
 
                 <div ref={scrollRef} className="no-drag flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-white/10">  
                   {messages.map((msg) => (  
@@ -649,18 +660,18 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
                 </div>  
 
                 {replyTo && (  
-                  <div className="px-4 py-2 bg-emerald-500/10 border-t border-emerald-500/20 flex items-center justify-between">  
+                  <div className="px-4 py-2 bg-emerald-500/10 border-t border-emerald-500/20 flex items-center justify-between drag-cancel">  
                     <div className="text-[10px] truncate">  
                       Replying to <span className="font-bold">{replyTo.username}</span>  
                     </div>  
-                    <button onClick={() => setReplyTo(null)}><X className="w-3 h-3" /></button>  
+                    <button onClick={() => setReplyTo(null)} className="drag-cancel"><X className="w-3 h-3" /></button>  
                   </div>  
                 )}  
 
-                <form onSubmit={sendMessage} className="no-drag p-4 bg-white/5 border-t border-white/10">  
+                <form onSubmit={sendMessage} className="no-drag p-4 bg-white/5 border-t border-white/10 drag-cancel">  
                   <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*" className="hidden" />  
                   <div className="flex items-center gap-2 bg-black/40 rounded-xl px-3 py-2 border border-white/5 focus-within:border-emerald-500/50 transition-colors">  
-                    <button type="button" onClick={() => fileInputRef.current?.click()} className="p-1 hover:text-emerald-500">  
+                    <button type="button" onClick={() => fileInputRef.current?.click()} className="p-1 hover:text-emerald-500 drag-cancel">  
                       <ImageIcon className="w-4 h-4" />  
                     </button>  
                     <button  
@@ -668,7 +679,9 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
                       onMouseDown={startRecording}  
                       onMouseUp={stopRecording}  
                       onMouseLeave={isRecording ? stopRecording : undefined}  
-                      className={cn("p-1 transition-colors", isRecording ? "text-red-500 animate-pulse" : "hover:text-emerald-500")}  
+                      onTouchStart={startRecording}  
+                      onTouchEnd={stopRecording}  
+                      className={cn("p-1 transition-colors drag-cancel", isRecording ? "text-red-500 animate-pulse" : "hover:text-emerald-500")}  
                     >  
                       <Mic className="w-4 h-4" />  
                     </button>  
@@ -680,7 +693,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
                       className="flex-1 bg-transparent outline-none text-sm"  
                       disabled={isRecording}  
                     />  
-                    <button type="submit" className="p-1 text-emerald-500">  
+                    <button type="submit" className="p-1 text-emerald-500 drag-cancel">  
                       <Send className="w-4 h-4" />  
                     </button>  
                   </div>  
@@ -689,7 +702,8 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
             ) : (  
               <button  
                 onClick={() => { setIsOpen(true); }}  
-                className="w-14 h-14 bg-emerald-600 rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform relative"  
+                onTouchEnd={() => { setIsOpen(true); }}  
+                className="w-14 h-14 bg-emerald-600 rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform relative drag-cancel"  
               >  
                 <MessageSquare className="w-6 h-6 text-white" />  
                 {unreadCount > 0 && (  
