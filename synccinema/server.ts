@@ -27,6 +27,9 @@ async function startServer() {
   // Handle favicon to avoid 404s
   app.get('/favicon.ico', (req, res) => res.status(204).end());
 
+  // Health check for Render
+  app.get('/healthz', (req, res) => res.status(200).json({ status: 'ok' }));
+
   // Room state management
   const roomStates = new Map();
   const socketToUser = new Map<string, { userId: string, roomId: string }>();
