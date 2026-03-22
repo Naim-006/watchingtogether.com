@@ -50,17 +50,17 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
   const isMobile = () => window.innerWidth < 768;
-  
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const draggableRef = useRef<HTMLDivElement>(null);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<Blob[]>([]);
   const resizeStartRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
-  
+
   const isOpenRef = useRef(isOpen);
-  useEffect(() => { 
-    isOpenRef.current = isOpen; 
+  useEffect(() => {
+    isOpenRef.current = isOpen;
     if (isOpen) setUnreadCount(0);
   }, [isOpen]);
 
@@ -128,7 +128,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
         .select('*')
         .eq('room_id', roomId)
         .order('created_at', { ascending: true });
-        
+
       if (data && !error) {
         const history: Message[] = data.map(d => {
           const replyRef = d.reply_to ? data.find(m => m.id === d.reply_to) : null;
@@ -176,8 +176,8 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
         try {
           const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
           audio.volume = 0.5;
-          audio.play().catch(() => {});
-        } catch (e) {}
+          audio.play().catch(() => { });
+        } catch (e) { }
       }
     });
 
@@ -259,7 +259,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
       setIsUploading(true);
       const { uploadToCloudinary } = await import('../lib/cloudinary');
       const url = await uploadToCloudinary(file, 'image');
-      
+
       const message: Message = {
         id: Math.random().toString(36).substr(2, 9),
         senderId: userId,
@@ -291,12 +291,12 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
 
       mediaRecorder.current.onstop = async () => {
         const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' });
-        
+
         try {
           setIsUploading(true);
           const { uploadToCloudinary } = await import('../lib/cloudinary');
           const url = await uploadToCloudinary(audioBlob, 'video'); // Cloudinary treats audio as video resource-type usually or auto
-          
+
           const message: Message = {
             id: Math.random().toString(36).substr(2, 9),
             senderId: userId,
@@ -340,7 +340,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
 
     useEffect(() => {
       if (msg.senderId === userId) return;
-      
+
       const observer = new IntersectionObserver(([entry]) => {
         if (entry.isIntersecting) {
           socket.emit('chat:seen', { roomId, messageId: msg.id, userId });
@@ -407,7 +407,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
     }, [showActions, showReactions]);
 
     return (
-      <div 
+      <div
         ref={itemRef}
         onMouseDown={handlePressStart}
         onMouseUp={handlePressEnd}
@@ -424,7 +424,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
           <span className="text-[10px] opacity-40">{msg.username} • {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
           {msg.isEdited && <span className="text-[9px] opacity-30 italic">(edited)</span>}
         </div>
-        
+
         {msg.replyTo && (
           <div className="text-[10px] bg-white/5 border-l-2 border-emerald-500 p-1 mb-1 rounded opacity-60 truncate w-full max-w-[200px]">
             <span className="font-bold">{msg.replyTo.username}:</span> {msg.replyTo.content}
@@ -434,7 +434,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
         <div className="relative group/bubble flex items-center gap-2">
           <AnimatePresence>
             {showActions && (
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0, scale: 0.9, y: 10 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: 10 }}
@@ -444,7 +444,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
                 )}
                 onClick={(e) => e.stopPropagation()}
               >
-                <button 
+                <button
                   onClick={() => { setShowReactions(true); setShowActions(false); }}
                   className="p-2 hover:bg-white/10 rounded-xl text-zinc-300 hover:text-white transition-colors"
                 >
@@ -452,13 +452,13 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
                 </button>
                 {msg.senderId === userId && (
                   <>
-                    <button 
+                    <button
                       onClick={() => { startEdit(); setShowActions(false); }}
                       className="p-2 hover:bg-white/10 rounded-xl text-zinc-300 hover:text-white transition-colors"
                     >
                       <Edit2 className="w-4 h-4" />
                     </button>
-                    <button 
+                    <button
                       onClick={() => { handleDelete(); setShowActions(false); }}
                       className="p-2 hover:bg-white/10 rounded-xl text-zinc-300 hover:text-red-500 transition-colors"
                     >
@@ -472,8 +472,8 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
 
           <div className={cn(
             "px-3 py-2 rounded-2xl text-sm overflow-hidden backdrop-blur-sm shadow-sm transition-transform active:scale-95",
-            msg.senderId === userId 
-              ? "bg-emerald-600/80 text-white rounded-tr-none" 
+            msg.senderId === userId
+              ? "bg-emerald-600/80 text-white rounded-tr-none"
               : "bg-white/10 text-white rounded-tl-none border border-white/5"
           )}>
             {editingMessageId === msg.id ? (
@@ -501,13 +501,13 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
 
           <AnimatePresence>
             {showReactions && (
-              <motion.div 
+              <motion.div
                 initial={{ scale: 0.8, opacity: 0, y: 10 }}
                 animate={{ scale: 1, opacity: 1, y: 0 }}
                 exit={{ scale: 0.8, opacity: 0, y: 10 }}
                 className={cn(
-                   "no-drag absolute -top-10 z-[80] bg-zinc-900 border border-white/10 rounded-full px-2 py-1 flex gap-2 shadow-2xl backdrop-blur-xl",
-                   msg.senderId === userId ? "right-2" : "left-2"
+                  "no-drag absolute -top-10 z-[80] bg-zinc-900 border border-white/10 rounded-full px-2 py-1 flex gap-2 shadow-2xl backdrop-blur-xl",
+                  msg.senderId === userId ? "right-2" : "left-2"
                 )}
               >
                 {['❤️', '😂', '😮', '😢', '🔥', '👍'].map(emoji => (
@@ -521,7 +521,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
         {msg.reactions && Object.keys(msg.reactions).length > 0 && (
           <div className="flex flex-wrap gap-1 px-1 -mt-1.5 z-10 relative">
             {Object.entries(msg.reactions).map(([emoji, users]) => (
-              <button 
+              <button
                 key={emoji}
                 onClick={(e) => { e.stopPropagation(); handleReact(emoji); }}
                 className={cn(
@@ -553,7 +553,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
     <>
       {/* Fullscreen backdrop */}
       {isFullscreen && <div className="fixed inset-0 bg-black/70 z-40" onClick={() => setIsFullscreen(false)} />}
-      
+
       <Draggable
         nodeRef={draggableRef}
         cancel=".no-drag"
@@ -623,55 +623,55 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
                   </div>
                 </div>
 
-              <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-white/10">
-                {messages.map((msg) => (
-                  <MessageItem key={msg.id} msg={msg} />
-                ))}
-                {typingUsers.size > 0 && (
-                  <div className="text-[10px] italic opacity-40 animate-pulse">
-                    {Array.from(typingUsers).join(', ')} typing...
+                <div ref={scrollRef} className="no-drag flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-white/10">
+                  {messages.map((msg) => (
+                    <MessageItem key={msg.id} msg={msg} />
+                  ))}
+                  {typingUsers.size > 0 && (
+                    <div className="text-[10px] italic opacity-40 animate-pulse">
+                      {Array.from(typingUsers).join(', ')} typing...
+                    </div>
+                  )}
+                </div>
+
+                {replyTo && (
+                  <div className="px-4 py-2 bg-emerald-500/10 border-t border-emerald-500/20 flex items-center justify-between">
+                    <div className="text-[10px] truncate">
+                      Replying to <span className="font-bold">{replyTo.username}</span>
+                    </div>
+                    <button onClick={() => setReplyTo(null)}><X className="w-3 h-3" /></button>
                   </div>
                 )}
-              </div>
 
-              {replyTo && (
-                <div className="px-4 py-2 bg-emerald-500/10 border-t border-emerald-500/20 flex items-center justify-between">
-                  <div className="text-[10px] truncate">
-                    Replying to <span className="font-bold">{replyTo.username}</span>
+                <form onSubmit={sendMessage} className="no-drag p-4 bg-white/5 border-t border-white/10">
+                  <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*" className="hidden" />
+                  <div className="flex items-center gap-2 bg-black/40 rounded-xl px-3 py-2 border border-white/5 focus-within:border-emerald-500/50 transition-colors">
+                    <button type="button" onClick={() => fileInputRef.current?.click()} className="p-1 hover:text-emerald-500">
+                      <ImageIcon className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={startRecording}
+                      onMouseUp={stopRecording}
+                      onMouseLeave={isRecording ? stopRecording : undefined}
+                      className={cn("p-1 transition-colors", isRecording ? "text-red-500 animate-pulse" : "hover:text-emerald-500")}
+                    >
+                      <Mic className="w-4 h-4" />
+                    </button>
+                    <input
+                      value={input}
+                      onChange={(e) => { setInput(e.target.value); handleTyping(true); }}
+                      onBlur={() => handleTyping(false)}
+                      placeholder={isRecording ? "Recording..." : "Type a message..."}
+                      className="flex-1 bg-transparent outline-none text-sm"
+                      disabled={isRecording}
+                    />
+                    <button type="submit" className="p-1 text-emerald-500">
+                      <Send className="w-4 h-4" />
+                    </button>
                   </div>
-                  <button onClick={() => setReplyTo(null)}><X className="w-3 h-3" /></button>
-                </div>
-              )}
-
-              <form onSubmit={sendMessage} className="no-drag p-4 bg-white/5 border-t border-white/10">
-                <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*" className="hidden" />
-                <div className="flex items-center gap-2 bg-black/40 rounded-xl px-3 py-2 border border-white/5 focus-within:border-emerald-500/50 transition-colors">
-                  <button type="button" onClick={() => fileInputRef.current?.click()} className="p-1 hover:text-emerald-500">
-                    <ImageIcon className="w-4 h-4" />
-                  </button>
-                  <button 
-                    type="button" 
-                    onMouseDown={startRecording}
-                    onMouseUp={stopRecording}
-                    onMouseLeave={isRecording ? stopRecording : undefined}
-                    className={cn("p-1 transition-colors", isRecording ? "text-red-500 animate-pulse" : "hover:text-emerald-500")}
-                  >
-                    <Mic className="w-4 h-4" />
-                  </button>
-                  <input
-                    value={input}
-                    onChange={(e) => { setInput(e.target.value); handleTyping(true); }}
-                    onBlur={() => handleTyping(false)}
-                    placeholder={isRecording ? "Recording..." : "Type a message..."}
-                    className="flex-1 bg-transparent outline-none text-sm"
-                    disabled={isRecording}
-                  />
-                  <button type="submit" className="p-1 text-emerald-500">
-                    <Send className="w-4 h-4" />
-                  </button>
-                </div>
-              </form>
-            </motion.div>
+                </form>
+              </motion.div>
             ) : (
               <button
                 onClick={() => { setIsOpen(true); }}
