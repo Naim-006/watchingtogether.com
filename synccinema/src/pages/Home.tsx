@@ -30,7 +30,20 @@ export const Home: React.FC = () => {
   const [createdRooms, setCreatedRooms] = useState<RoomHistoryItem[]>(() => loadList(CREATED_KEY));
   const [joinedRooms, setJoinedRooms] = useState<RoomHistoryItem[]>(() => loadList(JOINED_KEY));
   const [activeTab, setActiveTab] = useState<'created' | 'joined'>('created');
+  const [isConnected, setIsConnected] = useState(socket.connected);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    socket.connect();
+    const onConnect = () => setIsConnected(true);
+    const onDisconnect = () => setIsConnected(false);
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    return () => {
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+    };
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('synccinema_username', username);
@@ -143,8 +156,17 @@ export const Home: React.FC = () => {
                   loading && "opacity-50 cursor-not-allowed"
                 )}
               >
-                <Plus className="w-5 h-5" />
-                Create New Room
+                {loading && !isConnected ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                    <span>Waking up server...</span>
+                  </div>
+                ) : (
+                  <>
+                    <Plus className="w-5 h-5" />
+                    Create New Room
+                  </>
+                )}
               </motion.button>
 
               <div className="flex items-center gap-3">
@@ -175,7 +197,11 @@ export const Home: React.FC = () => {
                       loading && "opacity-50 cursor-not-allowed"
                     )}
                   >
-                    <ArrowRight className="w-5 h-5" />
+                    {loading && !isConnected ? (
+                      <div className="w-5 h-5 border-2 border-white/20 border-t-emerald-500 rounded-full animate-spin" />
+                    ) : (
+                      <ArrowRight className="w-5 h-5" />
+                    )}
                   </motion.button>
                 </div>
               </div>
