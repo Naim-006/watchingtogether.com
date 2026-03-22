@@ -23,6 +23,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, isHost, roomId, u
   const [duration, setDuration] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [isReady, setIsReady] = useState(false);
+  const [showControls, setShowControls] = useState(true);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const revealControls = () => {
+    setShowControls(true);
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    hideTimer.current = setTimeout(() => {
+      if (playing) setShowControls(false);
+    }, 3000);
+  };
+
+  // When paused always keep controls visible
+  useEffect(() => {
+    if (!playing) {
+      setShowControls(true);
+      if (hideTimer.current) clearTimeout(hideTimer.current);
+    } else {
+      // restart timer when playback resumes
+      hideTimer.current = setTimeout(() => setShowControls(false), 3000);
+    }
+    return () => { if (hideTimer.current) clearTimeout(hideTimer.current); };
+  }, [playing]);
 
   useEffect(() => {
     console.log('VideoPlayer URL:', url);
@@ -129,7 +151,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, isHost, roomId, u
   };
 
   return (
-    <div ref={containerRef} className="relative group aspect-video bg-black rounded-xl overflow-hidden shadow-2xl">
+    <div
+      ref={containerRef}
+      className="relative aspect-video bg-black rounded-xl overflow-hidden shadow-2xl"
+      onMouseMove={revealControls}
+      onMouseLeave={() => { if (playing) setShowControls(false); }}
+      onClick={revealControls}
+    >
       <Player
         ref={playerRef}
         url={url}
@@ -156,8 +184,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, isHost, roomId, u
       </div>
 
       <div className={cn(
-        "absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent flex flex-col gap-2 transition-opacity duration-300 z-20",
-        playing ? "opacity-0 group-hover:opacity-100" : "opacity-100"
+        "absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent flex flex-col gap-2 z-20 transition-all duration-500",
+        showControls ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none"
       )}>
         <input
           type="range" min={0} max={1} step="any"
