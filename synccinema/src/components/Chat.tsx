@@ -623,7 +623,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
                   </div>
                 </div>
 
-              <div ref={scrollRef} className="no-drag flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-white/10">
+              <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-white/10">
                 {messages.map((msg) => (
                   <MessageItem key={msg.id} msg={msg} />
                 ))}
