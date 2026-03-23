@@ -362,7 +362,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
     }
   };
 
-  const MessageItem = ({ msg }: { msg: Message }) => {
+  const MessageItem: React.FC<{ msg: Message }> = ({ msg }) => {
     const itemRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -578,7 +578,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
       <Draggable
         nodeRef={draggableRef}
         cancel=".no-drag"
-        disabled={isFullscreen || mobile}
+        disabled={isFullscreen}
         onStart={() => setIsDragging(true)}
         onStop={() => setIsDragging(false)}
       >
@@ -589,16 +589,12 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
             !isDragging && "transition-all duration-200",
             isFullscreen
               ? "inset-2 sm:inset-4"
-              : mobile
-                ? isOpen
-                  ? "bottom-0 left-0 right-0"
-                  : "bottom-4 right-4 w-14 h-14"
-                : isOpen
-                  ? "bottom-4 right-4"
-                  : "bottom-4 right-4 w-14 h-14"
+              : isOpen
+                ? "bottom-4 right-4"
+                : "bottom-4 right-4 w-14 h-14"
           )}
           style={isFullscreen || !isOpen ? undefined : {
-            width: mobile ? '100%' : `${chatSize.w}px`,
+            width: mobile ? (chatSize.w > window.innerWidth ? '90vw' : `${chatSize.w}px`) : `${chatSize.w}px`,
             bottom: keyboardOffset > 0 ? `${keyboardOffset + 8}px` : undefined,
           }}
         >
@@ -616,7 +612,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
                 style={{ height: isFullscreen ? '100%' : mobile ? '70vh' : `${chatSize.h}px` }}
               >
                 {/* 8-Directional Resize Handles */}
-                {!isMobile() && !isFullscreen && (
+                {!isFullscreen && (
                   <>
                     <div onMouseDown={(e) => startResize(e, 'n')} className="absolute top-0 inset-x-4 h-1 cursor-ns-resize z-50" />
                     <div onMouseDown={(e) => startResize(e, 's')} className="absolute bottom-0 inset-x-4 h-1 cursor-ns-resize z-50" />

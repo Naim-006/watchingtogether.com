@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { socket } from '../lib/socket';
+import Draggable from 'react-draggable';
 import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff, Users, ChevronDown, ChevronUp, Move } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
@@ -9,11 +10,32 @@ interface CallProps {
   userId: string;
   username: string;
   members: any[];
+  showFloatingTrigger?: boolean;
+  onParticipantsChange?: (count: number) => void;
 }
 
-export const Call: React.FC<CallProps> = ({ roomId, userId, username, members }) => {
+export interface CallHandle {
+  startCall: () => Promise<void>;
+  isInCall: boolean;
+  participantsCount: number;
+}
+
+export const Call = React.forwardRef<CallHandle, CallProps>(({ 
+  roomId, 
+  userId, 
+  username, 
+  members,
+  showFloatingTrigger = true,
+  onParticipantsChange 
+}, ref) => {
   const [isInCall, setIsInCall] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
+  
+  React.useImperativeHandle(ref, () => ({
+    startCall,
+    isInCall,
+    participantsCount: participants.length
+  }));
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(true);
   const [participants, setParticipants] = useState<string[]>([]);
@@ -22,6 +44,7 @@ export const Call: React.FC<CallProps> = ({ roomId, userId, username, members })
   const peerConnections = useRef<{ [socketId: string]: RTCPeerConnection }>({});
   const localStream = useRef<MediaStream | null>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
+  const draggableRef = useRef<HTMLDivElement>(null);
 
   // Polite Peer Logic: We are polite if our socket ID is lexicographically "greater" than the remote side
   const isPolite = (remoteId: string) => socket.id > remoteId;
@@ -51,8 +74,9 @@ export const Call: React.FC<CallProps> = ({ roomId, userId, username, members })
 
     socket.on('call:update', ({ participants }) => {
       console.log('[Call] Participants updated:', participants);
-      // Ensure participants is an array and filter out duplicates
-      setParticipants(Array.from(new Set(participants || [])));
+      const uniqueParticipants = Array.from(new Set(participants || []));
+      setParticipants(uniqueParticipants);
+      onParticipantsChange?.(uniqueParticipants.length);
     });
 
     socket.on('call:initiate', async ({ from }) => {
@@ -255,21 +279,28 @@ export const Call: React.FC<CallProps> = ({ roomId, userId, username, members })
       {/* Active Call UI */}
       <AnimatePresence>
         {isInCall && (
-          <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.9 }}
-            className={cn(
-              "bg-black/80 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden pointer-events-auto transition-all duration-300",
-              isMinimized ? "w-48" : "w-[320px] md:w-[400px]"
-            )}
+          <Draggable
+            nodeRef={draggableRef}
+            handle=".drag-handle"
+            bounds="parent"
           >
-            {/* Header */}
-            <div className="flex items-center justify-between p-3 border-b border-white/5 bg-white/5">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[10px] font-black uppercase tracking-widest opacity-80">Call Live • {callCount}</span>
-              </div>
+            <motion.div
+              ref={draggableRef}
+              initial={{ opacity: 0, y: 20, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.9 }}
+              className={cn(
+                "bg-black/80 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden pointer-events-auto transition-all duration-300",
+                isMinimized ? "w-48" : "w-[320px] md:w-[400px]"
+              )}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between p-3 border-b border-white/5 bg-white/5 drag-handle cursor-move">
+                <div className="flex items-center gap-2">
+                  <Move size={14} className="text-emerald-500 opacity-60" />
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-[10px] font-black uppercase tracking-widest opacity-80">Call Live • {callCount}</span>
+                </div>
               <div className="flex items-center gap-1">
                 <button onClick={() => setIsMinimized(!isMinimized)} className="p-1 px-2 hover:bg-white/10 rounded-lg transition-colors">
                   {isMinimized ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -329,11 +360,12 @@ export const Call: React.FC<CallProps> = ({ roomId, userId, username, members })
               </>
             )}
           </motion.div>
+          </Draggable>
         )}
       </AnimatePresence>
 
       {/* Join Bubble */}
-      {!isInCall && (
+      {!isInCall && showFloatingTrigger && (
         <motion.button
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
@@ -355,4 +387,4 @@ export const Call: React.FC<CallProps> = ({ roomId, userId, username, members })
       )}
     </div>
   );
-};
+});
