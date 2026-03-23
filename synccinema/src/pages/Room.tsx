@@ -3,7 +3,7 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { socket } from '../lib/socket';
 import { VideoPlayer } from '../components/VideoPlayer';
 import { Chat } from '../components/Chat';
-import { Call } from '../components/Call';
+import { Call, CallHandle } from '../components/Call';
 import { supabase } from '../lib/supabase';
 import {
   Users,
@@ -18,7 +18,8 @@ import {
   Link as LinkIcon,
   Clock,
   PlayCircle,
-  Menu
+  Menu,
+  Phone
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
@@ -66,6 +67,8 @@ export const Room: React.FC = () => {
   const [videoHistory, setVideoHistory] = useState<VideoHistoryItem[]>([]);
   const [currentVideoAddedBy, setCurrentVideoAddedBy] = useState<string>('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [participantsCount, setParticipantsCount] = useState(0);
+  const callRef = useRef<CallHandle>(null);
   const videoFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -390,6 +393,27 @@ export const Room: React.FC = () => {
             </div>
           </div>
 
+          <div className="space-y-5">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Voice & Video Call</h3>
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-3">
+               <button 
+                 onClick={() => callRef.current?.startCall()}
+                 className="w-full flex items-center justify-between p-3.5 bg-emerald-600 hover:bg-emerald-500 rounded-xl transition-all shadow-lg shadow-emerald-600/20 group animate-in fade-in slide-in-from-bottom-2"
+               >
+                 <div className="flex items-center gap-3">
+                   <Phone className="w-5 h-5 group-hover:rotate-12 transition-transform" />
+                   <span className="text-xs font-black uppercase tracking-widest text-white">
+                     {participantsCount > 0 ? 'Join Active Call' : 'Start Room Call'}
+                   </span>
+                 </div>
+                 {participantsCount > 0 && (
+                   <span className="bg-white/20 px-2.5 py-1 rounded-lg text-[10px] font-black text-white">
+                     {participantsCount}
+                   </span>
+                 )}
+               </button>
+            </div>
+          </div>
         </aside>
 
         {/* Center Content */}
@@ -428,7 +452,15 @@ export const Room: React.FC = () => {
       </main>
 
       <Chat roomId={roomId || ''} userId={userId} username={username} />
-      <Call roomId={roomId || ''} userId={userId} username={username} members={members} />
+      <Call 
+        ref={callRef}
+        roomId={roomId || ''} 
+        userId={userId} 
+        username={username} 
+        members={members}
+        showFloatingTrigger={false}
+        onParticipantsChange={setParticipantsCount}
+      />
     </div>
   );
 };
