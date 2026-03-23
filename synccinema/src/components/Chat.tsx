@@ -52,6 +52,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
   const [editContent, setEditContent] = useState('');
   const isMobile = () => window.innerWidth < 768;
   const [mobile, setMobile] = React.useState(() => window.innerWidth < 768);
+  
   useEffect(() => {
     const handler = () => setMobile(window.innerWidth < 768);
     window.addEventListener('resize', handler);
@@ -88,6 +89,10 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
   const startResize = useCallback((e: React.MouseEvent | React.TouchEvent, direction: string) => {
     e.preventDefault();
     e.stopPropagation();
+    
+    // Don't allow resize on mobile
+    if (mobile) return;
+    
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
     resizeStartRef.current = { x: clientX, y: clientY, w: chatSize.w, h: chatSize.h };
@@ -125,7 +130,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
     window.addEventListener('touchmove', onMove, { passive: false });
     window.addEventListener('mouseup', onUp);
     window.addEventListener('touchend', onUp);
-  }, [chatSize]);
+  }, [chatSize, mobile]);
 
   // Initial History Load
   useEffect(() => {
@@ -362,6 +367,12 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
     }
   };
 
+  const handleCloseChat = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsOpen(false);
+  };
+
   const MessageItem: React.FC<{ msg: Message }> = ({ msg }) => {
     const itemRef = useRef<HTMLDivElement>(null);
 
@@ -577,8 +588,8 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
 
       <Draggable
         nodeRef={draggableRef}
-        cancel=".no-drag"
-        disabled={isFullscreen}
+        cancel=".no-drag, .chat-header-buttons button"
+        disabled={isFullscreen || mobile}
         onStart={() => setIsDragging(true)}
         onStop={() => setIsDragging(false)}
       >
@@ -611,8 +622,8 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
                 )}
                 style={{ height: isFullscreen ? '100%' : mobile ? '70vh' : `${chatSize.h}px` }}
               >
-                {/* 8-Directional Resize Handles */}
-                {!isFullscreen && (
+                {/* 8-Directional Resize Handles - Only show on desktop */}
+                {!isFullscreen && !mobile && (
                   <>
                     <div onMouseDown={(e) => startResize(e, 'n')} className="absolute top-0 inset-x-4 h-1 cursor-ns-resize z-50" />
                     <div onMouseDown={(e) => startResize(e, 's')} className="absolute bottom-0 inset-x-4 h-1 cursor-ns-resize z-50" />
@@ -626,23 +637,33 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
                 )}
 
                 {/* Header */}
-                <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between cursor-move bg-white/5 shrink-0">
-                  <div className="flex items-center gap-3">
+                <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between bg-white/5 shrink-0">
+                  <div className="flex items-center gap-3 cursor-move">
                     <MessageSquare className="w-4 h-4 text-emerald-500" />
                     <div className="flex flex-col">
                       <span className="font-semibold text-sm leading-tight">Room Chat</span>
                       <span className="text-[10px] text-emerald-500 font-medium leading-tight">{onlineCount} Online</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="chat-header-buttons flex items-center gap-1">
                     <button
                       onClick={() => setIsFullscreen(f => !f)}
                       className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
                       title={isFullscreen ? 'Minimize' : 'Fullscreen'}
+                      onTouchEnd={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setIsFullscreen(f => !f);
+                      }}
                     >
                       {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
                     </button>
-                    <button onClick={() => setIsOpen(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors">
+                    <button 
+                      onClick={handleCloseChat}
+                      onTouchEnd={handleCloseChat}
+                      className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
+                      title="Close chat"
+                    >
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -679,6 +700,8 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
                       onMouseDown={startRecording}
                       onMouseUp={stopRecording}
                       onMouseLeave={isRecording ? stopRecording : undefined}
+                      onTouchStart={startRecording}
+                      onTouchEnd={stopRecording}
                       className={cn("p-1 transition-colors", isRecording ? "text-red-500 animate-pulse" : "hover:text-emerald-500")}
                     >
                       <Mic className="w-4 h-4" />
