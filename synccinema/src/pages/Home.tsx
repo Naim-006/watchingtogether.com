@@ -63,7 +63,7 @@ export const Home: React.FC = () => {
   };
 
   const handleJoinRoom = (code?: string) => {
-    const targetCode = (code || roomCode).toUpperCase();
+    const targetCode = (code || roomCode);
     if (!username || !targetCode) return alert('Please enter username and room code');
 
     setLoading(true);
@@ -180,12 +180,12 @@ export const Home: React.FC = () => {
                 <div className="flex gap-2">
                   <input
                     type="text"
-                    placeholder="XXXXXX"
+                    placeholder="xxxx"
                     value={roomCode}
-                    onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+                    onChange={(e) => setRoomCode(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleJoinRoom()}
-                    className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-emerald-500/50 transition-colors font-mono tracking-widest text-center text-sm uppercase"
-                    maxLength={10}
+                    className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-emerald-500/50 transition-colors font-mono tracking-widest text-center text-sm"
+                    maxLength={4}
                   />
                   <motion.button
                     whileHover={{ scale: 1.05 }}

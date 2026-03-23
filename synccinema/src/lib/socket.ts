@@ -6,5 +6,5 @@ const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || window.location.origin;
 
 export const socket = io(SOCKET_URL, {
   autoConnect: false,
-  transports: ['websocket', 'polling'], // websocket first, polling as fallback
+  transports: ['polling', 'websocket'], // polling first for maximum compatibility
 });

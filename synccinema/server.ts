@@ -34,6 +34,7 @@ async function startServer() {
   const roomStates = new Map();
   const socketToUser = new Map<string, { userId: string, roomId: string }>();
   const chatHistory = new Map<string, any[]>(); // Persistent in-memory fallback
+  const callParticipants = new Map<string, Set<string>>(); // roomId -> Set of socketIds
 
   io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
@@ -44,69 +45,74 @@ async function startServer() {
     });
 
     socket.on("room:join", async ({ roomId, userId, username }) => {
-      // Check if room is locked
-      const state = roomStates.get(roomId);
-      if (state?.isLocked) {
-        socket.emit("room:error", { message: "Room is locked by host." });
-        return;
-      }
-
-      socket.join(roomId);
-      socketToUser.set(socket.id, { userId, roomId });
-      console.log(`${username} joined room ${roomId}`);
-
-      // Update room members and user online status in DB
       try {
-        // Ensure user exists first
-        await supabase.from('users').upsert({
-          id: userId,
-          username: username,
-          online: true,
-          last_seen: new Date().toISOString()
-        });
+        console.log(`[Room] User ${username} (${socket.id}) joining ${roomId}`);
+        
+        // Check if room is locked
+        const state = roomStates.get(roomId);
+        if (state?.isLocked) {
+          socket.emit("room:error", { message: "Room is locked by host." });
+          return;
+        }
 
-        // Ensure room exists
-        await supabase.from('rooms').upsert({
-          id: roomId,
-          room_code: roomId
-        });
+        socket.join(roomId);
+        socketToUser.set(socket.id, { userId, roomId });
 
-        // Check if room has a host, if not make this user host (if role was host)
-        const { data: members } = await supabase.from('room_members').select('role').eq('room_id', roomId);
-        const hasHost = members?.some(m => m.role === 'host');
+        // Update room members and user online status in DB
+        try {
+          await supabase.from('users').upsert({
+            id: userId,
+            username: username,
+            online: true,
+            last_seen: new Date().toISOString()
+          });
 
-        await supabase.from('room_members').upsert({
-          id: `${roomId}:${userId}`,
-          room_id: roomId,
-          user_id: userId,
-          role: hasHost ? 'viewer' : 'host'
-        });
-      } catch (err) {
-        console.error("Error updating member/user status:", err);
-      }
+          await supabase.from('rooms').upsert({
+            id: roomId,
+            room_code: roomId
+          });
 
-      // Notify others and send full room state
-      socket.to(roomId).emit("user:joined", { userId, username, socketId: socket.id });
+          const { data: members } = await supabase.from('room_members').select('role').eq('room_id', roomId);
+          const hasHost = members?.some(m => m.role === 'host');
 
-      const { data: allMembers } = await supabase.from('room_members').select('user_id, role, users(username, online, last_seen)').eq('room_id', roomId);
-      const membersList = allMembers?.map((m: any) => ({
-        userId: m.user_id,
-        username: m.users.username,
-        role: m.role,
-        online: m.users.online,
-        lastSeen: m.users.last_seen
-      }));
+          await supabase.from('room_members').upsert({
+            id: `${roomId}:${userId}`,
+            room_id: roomId,
+            user_id: userId,
+            role: hasHost ? 'viewer' : 'host'
+          });
+        } catch (dbErr) {
+          console.error("[Room] DB update error:", dbErr);
+        }
 
-      io.to(roomId).emit("room:update", { members: membersList });
+        // Notify others
+        socket.to(roomId).emit("user:joined", { userId, username, socketId: socket.id });
 
-      // Send current video state if exists
-      if (roomStates.has(roomId)) {
-        socket.emit("video:sync", roomStates.get(roomId));
-      }
+        // Sync call participants
+        const currentCallers = Array.from(callParticipants.get(roomId) || []);
+        console.log(`[Call] Syncing ${currentCallers.length} callers to ${username}`);
+        socket.emit("call:update", { participants: currentCallers });
 
-      // Send current chat memory history if exists
-      if (chatHistory.has(roomId)) {
-        socket.emit("chat:history", chatHistory.get(roomId));
+        // Full room update
+        const { data: allMembers, error: membersError } = await supabase.from('room_members').select('user_id, role, users(username, online, last_seen)').eq('room_id', roomId);
+        
+        if (!membersError && allMembers) {
+          const membersList = allMembers.map((m: any) => ({
+            userId: m.user_id,
+            username: m.users?.username || 'Unknown',
+            role: m.role,
+            online: m.users?.online || false,
+            lastSeen: m.users?.last_seen
+          }));
+          io.to(roomId).emit("room:update", { members: membersList });
+        }
+
+        // Sync video & chat
+        if (roomStates.has(roomId)) socket.emit("video:sync", roomStates.get(roomId));
+        if (chatHistory.has(roomId)) socket.emit("chat:history", chatHistory.get(roomId));
+
+      } catch (fatalErr) {
+        console.error("[Room] Fatal join error:", fatalErr);
       }
     });
 
@@ -345,9 +351,36 @@ async function startServer() {
     });
 
     // WebRTC Signaling
-    socket.on("call:initiate", ({ roomId }) => {
+    socket.on("call:join", ({ roomId }) => {
+      if (!roomId) return console.error("[Call] Join failed: Missing roomId");
+      if (!callParticipants.has(roomId)) {
+        callParticipants.set(roomId, new Set());
+      }
+      callParticipants.get(roomId)?.add(socket.id);
+      
+      const participants = Array.from(callParticipants.get(roomId) || []);
+      console.log(`[Call] User ${socket.id} joined call in ${roomId}. Current callers:`, participants);
+
+      // Notify others in the call that a new person is ready to peer
       socket.to(roomId).emit("call:initiate", { from: socket.id });
+      
+      // Update everyone in the room about the new caller count
+      io.to(roomId).emit("call:update", { participants });
     });
+
+    socket.on("call:get_state", ({ roomId }) => {
+      const participants = Array.from(callParticipants.get(roomId) || []);
+      socket.emit("call:update", { participants });
+    });
+
+    socket.on("call:leave", ({ roomId }) => {
+      if (!roomId) return;
+      callParticipants.get(roomId)?.delete(socket.id);
+      const participants = Array.from(callParticipants.get(roomId) || []);
+      console.log(`[Call] User ${socket.id} left call in ${roomId}. Remaining:`, participants);
+      io.to(roomId).emit("call:update", { participants });
+    });
+
 
     socket.on("call:offer", ({ roomId, offer, to }) => {
       socket.to(to).emit("call:offer", { offer, from: socket.id });
@@ -365,6 +398,12 @@ async function startServer() {
       for (const room of socket.rooms) {
         if (room !== socket.id) {
           socket.to(room).emit("user:left", { socketId: socket.id });
+          
+          // Cleanup call state
+          if (callParticipants.has(room)) {
+            callParticipants.get(room)?.delete(socket.id);
+            io.to(room).emit("call:update", { participants: Array.from(callParticipants.get(room) || []) });
+          }
         }
       }
     });

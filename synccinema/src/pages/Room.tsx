@@ -390,9 +390,6 @@ export const Room: React.FC = () => {
             </div>
           </div>
 
-          <div className="mt-auto">
-            <Call roomId={roomId || ''} userId={userId} username={username} />
-          </div>
         </aside>
 
         {/* Center Content */}
@@ -431,6 +428,7 @@ export const Room: React.FC = () => {
       </main>
 
       <Chat roomId={roomId || ''} userId={userId} username={username} />
+      <Call roomId={roomId || ''} userId={userId} username={username} members={members} />
     </div>
   );
 };

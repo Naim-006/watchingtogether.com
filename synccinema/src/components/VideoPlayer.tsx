@@ -143,11 +143,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, isHost, roomId, u
   };
 
   const formatTime = (seconds: number) => {
-    if (isNaN(seconds)) return '0:00';
-    const date = new Date(seconds * 1000);
-    const mm = date.getUTCMinutes();
-    const ss = date.getUTCSeconds().toString().padStart(2, '0');
-    return `${mm}:${ss}`;
+    if (isNaN(seconds) || seconds < 0) return '0:00';
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    const ss = secs.toString().padStart(2, '0');
+    
+    if (hrs > 0) {
+      const mm = mins.toString().padStart(2, '0');
+      return `${hrs}:${mm}:${ss}`;
+    }
+    return `${mins}:${ss}`;
   };
 
   return (
