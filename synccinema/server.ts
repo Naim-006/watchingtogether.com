@@ -57,6 +57,7 @@ async function startServer() {
       
       // Update room members and user online status in DB
       try {
+        // Ensure user exists first
         await supabase.from('users').upsert({
           id: userId,
           username: username,
@@ -64,11 +65,18 @@ async function startServer() {
           last_seen: new Date().toISOString()
         });
 
+        // Ensure room exists
+        await supabase.from('rooms').upsert({
+          id: roomId,
+          room_code: roomId
+        });
+
         // Check if room has a host, if not make this user host (if role was host)
         const { data: members } = await supabase.from('room_members').select('role').eq('room_id', roomId);
         const hasHost = members?.some(m => m.role === 'host');
 
         await supabase.from('room_members').upsert({
+          id: `${roomId}:${userId}`,
           room_id: roomId,
           user_id: userId,
           role: hasHost ? 'viewer' : 'host' 
@@ -142,26 +150,41 @@ async function startServer() {
     });
 
     socket.on("chat:send", async ({ roomId, message }) => {
-      // RAM Save for resilience
-      const history = chatHistory.get(roomId) || [];
-      history.push({ ...message, seenBy: [] });
-      if (history.length > 200) history.shift();
-      chatHistory.set(roomId, history);
-
-      io.to(roomId).emit("chat:message", message);
-
-      // Persist to DB
+      console.log(`[Chat] Message from ${message.username} in ${roomId}`);
       try {
-        await supabase.from('messages').insert({
+        // 1. Persist to DB using the provided string ID
+        const { data: dbMsg, error } = await supabase.from('messages').insert({
+          id: message.id, // Now valid since primary key is TEXT
           room_id: roomId,
           sender_id: message.senderId,
           content: message.content,
           type: message.type || 'text',
           file_url: message.fileUrl || null,
           reply_to: message.replyTo?.id || null
-        });
+        }).select().single();
+
+        if (error) throw error;
+
+        // 2. Broadcast the message (using the DB provided state if possible)
+        const finalMessage = {
+          ...message,
+          id: dbMsg?.id || message.id,
+          timestamp: dbMsg?.created_at ? new Date(dbMsg.created_at).getTime() : message.timestamp,
+          seenBy: []
+        };
+
+        // 3. Update RAM History with the correct ID
+        const history = chatHistory.get(roomId) || [];
+        history.push(finalMessage);
+        if (history.length > 200) history.shift();
+        chatHistory.set(roomId, history);
+
+        // 4. Broadcast the message with the correct ID to everyone
+        io.to(roomId).emit("chat:message", finalMessage);
       } catch (err) {
-        console.error("Error saving message:", err);
+        console.error("[Chat] Error saving message:", err);
+        // Fallback: broadcast with temp ID if DB fails (limited functionality)
+        io.to(roomId).emit("chat:message", { ...message, seenBy: [] });
       }
     });
 
@@ -197,6 +220,94 @@ async function startServer() {
         }
       } catch (err) {
         console.error("Error updating seen status:", err);
+      }
+    });
+
+    socket.on("chat:react", async ({ roomId, messageId, emoji, userId }) => {
+      console.log(`[Chat] React ${emoji} to ${messageId} by ${userId}`);
+      const history = chatHistory.get(roomId) || [];
+      const msgIdx = history.findIndex(m => m.id === messageId);
+      
+      let reactions = {};
+
+      if (msgIdx > -1) {
+        const msg = history[msgIdx];
+        if (!msg.reactions) msg.reactions = {};
+        if (!msg.reactions[emoji]) msg.reactions[emoji] = [];
+        
+        const userIndex = msg.reactions[emoji].indexOf(userId);
+        if (userIndex > -1) {
+          msg.reactions[emoji].splice(userIndex, 1);
+          if (msg.reactions[emoji].length === 0) delete msg.reactions[emoji];
+        } else {
+          msg.reactions[emoji].push(userId);
+        }
+        
+        reactions = msg.reactions;
+        history[msgIdx] = msg;
+        chatHistory.set(roomId, history);
+        
+        io.to(roomId).emit("chat:react_update", { messageId, reactions });
+      } else {
+        // If not in RAM (stale or after refresh), we still need to handle it
+        try {
+          const { data: dbMsg } = await supabase.from('messages').select('reactions').eq('id', messageId).single();
+          if (dbMsg) {
+            reactions = dbMsg.reactions || {};
+            if (!reactions[emoji]) reactions[emoji] = [];
+            const userIndex = reactions[emoji].indexOf(userId);
+            if (userIndex > -1) {
+              reactions[emoji].splice(userIndex, 1);
+              if (reactions[emoji].length === 0) delete reactions[emoji];
+            } else {
+              reactions[emoji].push(userId);
+            }
+            io.to(roomId).emit("chat:react_update", { messageId, reactions });
+          }
+        } catch (e) {}
+      }
+
+      // Final DB persist
+      try {
+        await supabase.from('messages').update({ reactions }).eq('id', messageId);
+      } catch (err) {
+        console.error("Error updating reactions in DB:", err);
+      }
+    });
+
+    socket.on("chat:edit", async ({ roomId, messageId, newContent }) => {
+      console.log(`[Chat] Edit ${messageId} to "${newContent}"`);
+      const history = chatHistory.get(roomId) || [];
+      const msgIdx = history.findIndex(m => m.id === messageId);
+      
+      if (msgIdx > -1) {
+        history[msgIdx].content = newContent;
+        history[msgIdx].isEdited = true;
+        chatHistory.set(roomId, history);
+      }
+      
+      // Always broadcast and persist
+      io.to(roomId).emit("chat:edit_update", { messageId, newContent, isEdited: true });
+
+      try {
+        await supabase.from('messages').update({ content: newContent, is_edited: true }).eq('id', messageId);
+      } catch (err) {
+        console.error("[Chat] Error editing message:", err);
+      }
+    });
+
+    socket.on("chat:delete", async ({ roomId, messageId }) => {
+      console.log(`[Chat] Delete ${messageId}`);
+      let history = chatHistory.get(roomId) || [];
+      history = history.filter(m => m.id !== messageId);
+      chatHistory.set(roomId, history);
+      
+      io.to(roomId).emit("chat:delete_update", { messageId });
+
+      try {
+        await supabase.from('messages').delete().eq('id', messageId);
+      } catch (err) {
+        console.error("[Chat] Error deleting message:", err);
       }
     });
 
