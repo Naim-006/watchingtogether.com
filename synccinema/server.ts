@@ -23,7 +23,7 @@ async function startServer() {
   });
 
   const PORT = parseInt(process.env.PORT || '3000', 10);
-  
+
   // Handle favicon to avoid 404s
   app.get('/favicon.ico', (req, res) => res.status(204).end());
 
@@ -54,7 +54,7 @@ async function startServer() {
       socket.join(roomId);
       socketToUser.set(socket.id, { userId, roomId });
       console.log(`${username} joined room ${roomId}`);
-      
+
       // Update room members and user online status in DB
       try {
         // Ensure user exists first
@@ -79,15 +79,15 @@ async function startServer() {
           id: `${roomId}:${userId}`,
           room_id: roomId,
           user_id: userId,
-          role: hasHost ? 'viewer' : 'host' 
+          role: hasHost ? 'viewer' : 'host'
         });
       } catch (err) {
         console.error("Error updating member/user status:", err);
       }
-      
+
       // Notify others and send full room state
       socket.to(roomId).emit("user:joined", { userId, username, socketId: socket.id });
-      
+
       const { data: allMembers } = await supabase.from('room_members').select('user_id, role, users(username, online, last_seen)').eq('room_id', roomId);
       const membersList = allMembers?.map((m: any) => ({
         userId: m.user_id,
@@ -96,7 +96,7 @@ async function startServer() {
         online: m.users.online,
         lastSeen: m.users.last_seen
       }));
-      
+
       io.to(roomId).emit("room:update", { members: membersList });
 
       // Send current video state if exists
@@ -112,7 +112,7 @@ async function startServer() {
 
     socket.on("video:set", async ({ roomId, videoData }) => {
       roomStates.set(roomId, { ...videoData, lastUpdate: Date.now() });
-      
+
       // Persist to DB
       try {
         await supabase.from('room_videos').insert({
@@ -124,21 +124,21 @@ async function startServer() {
       } catch (err) {
         console.error("Error saving video:", err);
       }
-      
+
       io.to(roomId).emit("video:sync", roomStates.get(roomId));
     });
 
     socket.on("video:action", async ({ roomId, action, currentTime, playbackRate, userId }) => {
       const state = roomStates.get(roomId) || {};
-      const newState = { 
-        ...state, 
+      const newState = {
+        ...state,
         isPlaying: action === 'play' ? true : action === 'pause' ? false : state.isPlaying,
         currentTime,
         playbackRate: playbackRate || state.playbackRate || 1,
         lastUpdate: Date.now()
       };
       roomStates.set(roomId, newState);
-      
+
       // Broadcast to everyone except sender
       socket.to(roomId).emit("video:action", { action, currentTime, playbackRate });
     });
@@ -199,7 +199,7 @@ async function startServer() {
         seenArray = Array.from(seenSet);
         msg.seenBy = seenArray;
       }
-      
+
       socket.to(roomId).emit("chat:seen_update", { messageId, seenBy: seenArray });
 
       // DB attempt
@@ -209,7 +209,7 @@ async function startServer() {
           .select('seen_by')
           .eq('id', messageId)
           .single();
-        
+
         if (msg) {
           const seenBy = new Set(msg.seen_by || []);
           seenBy.add(userId);
@@ -227,14 +227,14 @@ async function startServer() {
       console.log(`[Chat] React ${emoji} to ${messageId} by ${userId}`);
       const history = chatHistory.get(roomId) || [];
       const msgIdx = history.findIndex(m => m.id === messageId);
-      
+
       let reactions = {};
 
       if (msgIdx > -1) {
         const msg = history[msgIdx];
         if (!msg.reactions) msg.reactions = {};
         if (!msg.reactions[emoji]) msg.reactions[emoji] = [];
-        
+
         const userIndex = msg.reactions[emoji].indexOf(userId);
         if (userIndex > -1) {
           msg.reactions[emoji].splice(userIndex, 1);
@@ -242,11 +242,11 @@ async function startServer() {
         } else {
           msg.reactions[emoji].push(userId);
         }
-        
+
         reactions = msg.reactions;
         history[msgIdx] = msg;
         chatHistory.set(roomId, history);
-        
+
         io.to(roomId).emit("chat:react_update", { messageId, reactions });
       } else {
         // If not in RAM (stale or after refresh), we still need to handle it
@@ -264,7 +264,7 @@ async function startServer() {
             }
             io.to(roomId).emit("chat:react_update", { messageId, reactions });
           }
-        } catch (e) {}
+        } catch (e) { }
       }
 
       // Final DB persist
@@ -279,13 +279,13 @@ async function startServer() {
       console.log(`[Chat] Edit ${messageId} to "${newContent}"`);
       const history = chatHistory.get(roomId) || [];
       const msgIdx = history.findIndex(m => m.id === messageId);
-      
+
       if (msgIdx > -1) {
         history[msgIdx].content = newContent;
         history[msgIdx].isEdited = true;
         chatHistory.set(roomId, history);
       }
-      
+
       // Always broadcast and persist
       io.to(roomId).emit("chat:edit_update", { messageId, newContent, isEdited: true });
 
@@ -301,7 +301,7 @@ async function startServer() {
       let history = chatHistory.get(roomId) || [];
       history = history.filter(m => m.id !== messageId);
       chatHistory.set(roomId, history);
-      
+
       io.to(roomId).emit("chat:delete_update", { messageId });
 
       try {
@@ -323,7 +323,7 @@ async function startServer() {
         await supabase.from('room_members').update({ role: 'viewer' }).eq('room_id', roomId).eq('role', 'host');
         // Promote new host
         await supabase.from('room_members').update({ role: 'host' }).eq('room_id', roomId).eq('user_id', targetUserId);
-        
+
         // Fetch new members list
         const { data: allMembers } = await supabase.from('room_members').select('user_id, role, users(username, online, last_seen)').eq('room_id', roomId);
         const membersList = allMembers?.map((m: any) => ({
@@ -333,7 +333,7 @@ async function startServer() {
           online: m.users.online,
           lastSeen: m.users.last_seen
         }));
-        
+
         io.to(roomId).emit("room:update", { members: membersList });
       } catch (err) {
         console.error("Error transferring host:", err);
