@@ -230,54 +230,66 @@ async function startServer() {
     });
 
     socket.on("chat:react", async ({ roomId, messageId, emoji, userId }) => {
-      console.log(`[Chat] React ${emoji} to ${messageId} by ${userId}`);
-      const history = chatHistory.get(roomId) || [];
-      const msgIdx = history.findIndex(m => m.id === messageId);
+      try {
+        console.log(`[Chat] React ${emoji} to ${messageId} by ${userId}`);
+        const history = chatHistory.get(roomId) || [];
+        const msgIdx = history.findIndex(m => m.id === messageId);
 
-      let reactions = {};
+        let reactions: Record<string, string[]> = {};
 
-      if (msgIdx > -1) {
-        const msg = history[msgIdx];
-        if (!msg.reactions) msg.reactions = {};
-        if (!msg.reactions[emoji]) msg.reactions[emoji] = [];
+        if (msgIdx > -1) {
+          const msg = history[msgIdx];
+          reactions = msg.reactions || {};
+          if (!reactions[emoji]) reactions[emoji] = [];
 
-        const userIndex = msg.reactions[emoji].indexOf(userId);
-        if (userIndex > -1) {
-          msg.reactions[emoji].splice(userIndex, 1);
-          if (msg.reactions[emoji].length === 0) delete msg.reactions[emoji];
+          const userIndex = reactions[emoji].indexOf(userId);
+          if (userIndex > -1) {
+            reactions[emoji].splice(userIndex, 1);
+            if (reactions[emoji].length === 0) delete reactions[emoji];
+          } else {
+            reactions[emoji].push(userId);
+          }
+
+          msg.reactions = reactions;
+          history[msgIdx] = msg;
+          chatHistory.set(roomId, history);
         } else {
-          msg.reactions[emoji].push(userId);
+          // Fetch current reactions from DB first to avoid wiping data
+          const { data: dbMsg, error: fetchErr } = await supabase
+            .from('messages')
+            .select('reactions')
+            .eq('id', messageId)
+            .single();
+          
+          if (fetchErr || !dbMsg) {
+            console.error("[Chat] Error fetching reactions for update:", fetchErr);
+            return;
+          }
+
+          reactions = dbMsg.reactions || {};
+          if (!reactions[emoji]) reactions[emoji] = [];
+          
+          const userIndex = reactions[emoji].indexOf(userId);
+          if (userIndex > -1) {
+            reactions[emoji].splice(userIndex, 1);
+            if (reactions[emoji].length === 0) delete reactions[emoji];
+          } else {
+            reactions[emoji].push(userId);
+          }
         }
 
-        reactions = msg.reactions;
-        history[msgIdx] = msg;
-        chatHistory.set(roomId, history);
-
+        // Broadcast the update immediately
         io.to(roomId).emit("chat:react_update", { messageId, reactions });
-      } else {
-        // If not in RAM (stale or after refresh), we still need to handle it
-        try {
-          const { data: dbMsg } = await supabase.from('messages').select('reactions').eq('id', messageId).single();
-          if (dbMsg) {
-            reactions = dbMsg.reactions || {};
-            if (!reactions[emoji]) reactions[emoji] = [];
-            const userIndex = reactions[emoji].indexOf(userId);
-            if (userIndex > -1) {
-              reactions[emoji].splice(userIndex, 1);
-              if (reactions[emoji].length === 0) delete reactions[emoji];
-            } else {
-              reactions[emoji].push(userId);
-            }
-            io.to(roomId).emit("chat:react_update", { messageId, reactions });
-          }
-        } catch (e) { }
-      }
 
-      // Final DB persist
-      try {
-        await supabase.from('messages').update({ reactions }).eq('id', messageId);
+        // Persist to DB
+        const { error: updateErr } = await supabase
+          .from('messages')
+          .update({ reactions })
+          .eq('id', messageId);
+
+        if (updateErr) console.error("[Chat] Error persisting reactions:", updateErr);
       } catch (err) {
-        console.error("Error updating reactions in DB:", err);
+        console.error("[Chat] Fatal reaction error:", err);
       }
     });
 
@@ -303,17 +315,33 @@ async function startServer() {
     });
 
     socket.on("chat:delete", async ({ roomId, messageId }) => {
-      console.log(`[Chat] Delete ${messageId}`);
+      console.log(`[Chat] Soft-delete ${messageId}`);
       let history = chatHistory.get(roomId) || [];
-      history = history.filter(m => m.id !== messageId);
-      chatHistory.set(roomId, history);
+      const msgIdx = history.findIndex(m => m.id === messageId);
+      
+      if (msgIdx > -1) {
+        history[msgIdx].content = "This message was deleted";
+        history[msgIdx].isDeleted = true;
+        history[msgIdx].type = 'text';
+        history[msgIdx].fileUrl = undefined;
+        chatHistory.set(roomId, history);
 
-      io.to(roomId).emit("chat:delete_update", { messageId });
+        io.to(roomId).emit("chat:delete_update", { 
+          messageId, 
+          content: "This message was deleted", 
+          isDeleted: true 
+        });
 
-      try {
-        await supabase.from('messages').delete().eq('id', messageId);
-      } catch (err) {
-        console.error("[Chat] Error deleting message:", err);
+        try {
+          await supabase.from('messages').update({ 
+            content: "This message was deleted",
+            type: 'text',
+            file_url: null,
+            is_edited: true // use this as a hack since we don't have is_deleted column
+          }).eq('id', messageId);
+        } catch (err) {
+          console.error("[Chat] Error soft-deleting message:", err);
+        }
       }
     });
 
@@ -343,6 +371,82 @@ async function startServer() {
         io.to(roomId).emit("room:update", { members: membersList });
       } catch (err) {
         console.error("Error transferring host:", err);
+      }
+    });
+
+    socket.on("room:kick", async ({ roomId, targetUserId }) => {
+      try {
+        console.log(`[Room] Kick request for ${targetUserId} in ${roomId}`);
+        
+        // 1. Verify requester is host
+        const { data: requester, error: reqError } = await supabase
+          .from('room_members')
+          .select('role')
+          .eq('room_id', roomId)
+          .eq('user_id', socketToUser.get(socket.id)?.userId)
+          .single();
+
+        if (reqError || requester?.role !== 'host') {
+          console.error("[Room] Unauthorized kick attempt");
+          return;
+        }
+
+        // 2. Remove from DB
+        const { error: deleteError } = await supabase
+          .from('room_members')
+          .delete()
+          .eq('room_id', roomId)
+          .eq('user_id', targetUserId);
+
+        if (deleteError) {
+          console.error("[Room] DB deletion error:", deleteError);
+          return;
+        }
+
+        console.log(`[Room] User ${targetUserId} deleted from DB in ${roomId}`);
+
+        // 3. Find all target sockets and emit kicked event
+        const targetSocketEntries = Array.from(socketToUser.entries())
+          .filter(([_, info]) => info.userId === targetUserId && info.roomId === roomId);
+
+        console.log(`[Room] Found ${targetSocketEntries.length} sockets to kick for user ${targetUserId}`);
+
+        for (const [targetSocketId, _] of targetSocketEntries) {
+          const targetSocket = io.sockets.sockets.get(targetSocketId);
+          if (targetSocket) {
+            targetSocket.emit("room:kicked", { message: "You have been removed from the room by the host." });
+            targetSocket.leave(roomId);
+            console.log(`[Room] Kicked socket ${targetSocketId}`);
+          }
+        }
+
+        // 4. Update everyone's member list
+        const { data: allMembers, error: fetchError } = await supabase
+          .from('room_members')
+          .select('user_id, role, users(username, online, last_seen)')
+          .eq('room_id', roomId);
+        
+        if (fetchError) {
+          console.error("[Room] Error fetching members after kick:", fetchError);
+        }
+
+        const membersList = allMembers?.map((m: any) => ({
+          userId: m.user_id,
+          username: m.users?.username || 'Unknown',
+          role: m.role,
+          online: m.users?.online || false,
+          lastSeen: m.users?.last_seen
+        })) || [];
+
+        io.to(roomId).emit("room:update", { members: membersList });
+        
+        // Notify others about each disconnected socket
+        for (const [sid, _] of targetSocketEntries) {
+          io.to(roomId).emit("user:left", { socketId: sid });
+        }
+
+      } catch (err) {
+        console.error("[Room] Error kicking member:", err);
       }
     });
 
