@@ -165,13 +165,13 @@ const VirtualKeyboard: React.FC<{
       <div 
         onMouseDown={onResize}
         onTouchStart={onResize}
-        className="h-6 w-full flex items-center justify-center cursor-ns-resize group/kb-handle active:bg-white/5 shrink-0"
+        className="h-4 w-full flex items-center justify-center cursor-ns-resize group/kb-handle active:bg-white/5 shrink-0 touch-none"
       >
-        <div className="w-16 h-1 bg-white/20 group-hover/kb-handle:bg-white/40 rounded-full transition-colors" />
+        <div className="w-12 h-0.5 bg-white/20 group-hover/kb-handle:bg-white/40 rounded-full transition-colors" />
       </div>
 
-      <div className="flex-1 overflow-y-auto px-2 pb-4">
-        <div className="flex flex-col gap-1.5 max-w-xl mx-auto py-2">
+      <div className="flex-1 overflow-y-auto px-1.5 pb-2">
+        <div className="flex flex-col gap-1 max-w-xl mx-auto py-1">
         {keys[layout].map((row, i) => (
           <div key={i} className="flex justify-center gap-1">
             {row.map((key) => (
@@ -180,10 +180,10 @@ const VirtualKeyboard: React.FC<{
                 type="button"
                 onClick={() => handleKey(key)}
                 className={cn(
-                  "h-10 rounded-lg flex items-center justify-center font-medium transition-all active:scale-95 active:bg-white/20 shadow-sm",
+                  "h-8 rounded-lg flex items-center justify-center font-medium transition-all active:scale-95 active:bg-white/20 shadow-sm",
                   key === 'Space' ? "flex-[4] bg-white/10" : 
                   (key === 'Shift' || key === '⌫' || key === 'Done' || key === '?123' || key === 'ABC') ? "flex-[1.5] bg-white/5 text-[10px] uppercase font-bold" : 
-                  "flex-1 bg-white/10 hover:bg-white/20 text-sm"
+                  "flex-1 bg-white/10 hover:bg-white/20 text-xs"
                 )}
               >
                 {key === 'Shift' ? (isShift ? '⬆' : '⇧') : (isShift && key.length === 1 ? key.toUpperCase() : key)}
@@ -317,7 +317,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
     window.addEventListener('touchmove', onMove, { passive: false });
     window.addEventListener('mouseup', onUp);
     window.addEventListener('touchend', onUp);
-  }, [chatSize, mobile]);
+  }, [chatSize, mobile, isRoomFullscreen, kbHeight]);
 
   // Initial History Load
   useEffect(() => {
@@ -448,12 +448,12 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
   });
 
   useEffect(() => {
-    if (isOpen && messages.length > 0) {
+    if ((isOpen || showVirtualKeyboard) && messages.length > 0) {
       setTimeout(() => {
         rowVirtualizer.scrollToIndex(messages.length - 1, { align: 'end' });
-      }, 50);
+      }, 100);
     }
-  }, [messages.length, isOpen, rowVirtualizer]);
+  }, [messages.length, isOpen, showVirtualKeyboard, rowVirtualizer]);
 
   const sendMessage = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -855,10 +855,10 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
               >
                 {/* Fullscreen Resizer */}
                 {isRoomFullscreen && isOpen && (
-                  <div
+                   <div
                     onTouchStart={(e) => startResize(e, 'w')}
                     onMouseDown={(e) => startResize(e, 'w')}
-                    className="absolute -left-4 inset-y-0 w-8 flex items-center justify-center cursor-ew-resize z-[200] group/resizer"
+                    className="absolute -left-4 inset-y-0 w-8 flex items-center justify-center cursor-ew-resize z-[200] group/resizer touch-none"
                   >
                     <div className="h-12 w-1.5 bg-white/20 group-hover/resizer:bg-white/60 transition-colors rounded-full" />
                   </div>
@@ -888,27 +888,28 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
                   </>
                 )}
 
-                {/* Header */}
-                <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between bg-white/5 shrink-0">
-                  <div className="flex items-center gap-3 cursor-move">
-                    <MessageSquare className="w-4 h-4 text-emerald-500" />
-                    <div className="flex flex-col">
-                      <span className="font-semibold text-sm leading-tight">Room Chat</span>
-                      <span className="text-[10px] text-emerald-500 font-medium leading-tight">{onlineCount} Online</span>
+                {/* Header - Hide in compact landscape mode to save space */}
+                {!(mobile && isRoomFullscreen && showVirtualKeyboard) && (
+                  <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between bg-white/5 shrink-0">
+                    <div className="flex items-center gap-3 cursor-move">
+                      <MessageSquare className="w-4 h-4 text-emerald-500" />
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-sm leading-tight">Room Chat</span>
+                        <span className="text-[10px] text-emerald-500 font-medium leading-tight">{onlineCount} Online</span>
+                      </div>
+                    </div>
+                    <div className="chat-header-buttons flex items-center gap-1">
+                      <button
+                        onClick={handleCloseChat}
+                        onTouchEnd={handleCloseChat}
+                        className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
+                        title="Close chat"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
-                  <div className="chat-header-buttons flex items-center gap-1">
-
-                    <button
-                      onClick={handleCloseChat}
-                      onTouchEnd={handleCloseChat}
-                      className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
-                      title="Close chat"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
+                )}
 
                 <div 
                   ref={scrollRef} 
@@ -956,7 +957,13 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
                   </div>
                 )}
 
-                <form onSubmit={sendMessage} className="no-drag p-4 bg-white/5 border-t border-white/10 relative shrink-0">
+                <form 
+                  onSubmit={sendMessage} 
+                  className={cn(
+                    "no-drag bg-white/5 border-t border-white/10 relative shrink-0 transition-all",
+                    mobile && isRoomFullscreen && showVirtualKeyboard ? "p-2" : "p-4"
+                  )}
+                >
                   <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*" className="hidden" />
 
                   <AnimatePresence>
