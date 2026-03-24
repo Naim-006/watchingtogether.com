@@ -105,6 +105,83 @@ interface ChatProps {
   isRoomFullscreen?: boolean;
 }
 
+const VirtualKeyboard: React.FC<{ 
+  onKey: (k: string) => void; 
+  onBackspace: () => void; 
+  onEnter: () => void;
+  onHide: () => void;
+  className?: string;
+}> = ({ onKey, onBackspace, onEnter, onHide, className }) => {
+  const [layout, setLayout] = useState<'alpha' | 'symbols'>('alpha');
+  const [isShift, setIsShift] = useState(false);
+
+  const keys = {
+    alpha: [
+      ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'],
+      ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'],
+      ['Shift', 'z', 'x', 'c', 'v', 'b', 'n', 'm', '⌫'],
+      ['?123', 'Space', 'Done']
+    ],
+    symbols: [
+      ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
+      ['-', '/', ':', ';', '(', ')', '$', '&', '@', '"'],
+      ['.', ',', '?', '!', "'", '#', '%', '^', '⌫'],
+      ['ABC', 'Space', 'Done']
+    ]
+  };
+
+  const handleKey = (key: string) => {
+    if (key === 'Shift') {
+      setIsShift(!isShift);
+    } else if (key === '⌫') {
+      onBackspace();
+    } else if (key === 'Space') {
+      onKey(' ');
+    } else if (key === 'Done' || key === 'Enter') {
+      onEnter();
+      onHide();
+    } else if (key === '?123') {
+      setLayout('symbols');
+    } else if (key === 'ABC') {
+      setLayout('alpha');
+    } else {
+      onKey(isShift ? key.toUpperCase() : key.toLowerCase());
+      if (isShift) setIsShift(false);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ y: 20, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      exit={{ y: 20, opacity: 0 }}
+      className={cn("bg-black/40 backdrop-blur-3xl border-t border-white/10 p-2 select-none no-drag touch-none", className)}
+      onMouseDown={(e) => e.preventDefault()}
+    >
+      <div className="flex flex-col gap-1.5 max-w-xl mx-auto">
+        {keys[layout].map((row, i) => (
+          <div key={i} className="flex justify-center gap-1">
+            {row.map((key) => (
+              <button
+                key={key}
+                onClick={() => handleKey(key)}
+                className={cn(
+                  "h-10 rounded-lg flex items-center justify-center font-medium transition-all active:scale-90 active:bg-white/20 shadow-sm",
+                  key === 'Space' ? "flex-[4] bg-white/10" : 
+                  (key === 'Shift' || key === '⌫' || key === 'Done' || key === '?123' || key === 'ABC') ? "flex-[1.5] bg-white/5 text-[10px] uppercase font-bold" : 
+                  "flex-1 bg-white/10 hover:bg-white/20 text-sm"
+                )}
+              >
+                {key === 'Shift' ? (isShift ? '⬆' : '⇧') : (isShift && key.length === 1 ? key.toUpperCase() : key)}
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
+    </motion.div>
+  );
+};
+
 export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFullscreen }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -123,6 +200,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showVirtualKeyboard, setShowVirtualKeyboard] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const isMobile = () => window.innerWidth < 768;
   const [mobile, setMobile] = React.useState(() => window.innerWidth < 768);
@@ -182,7 +260,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
       if (!resizeStartRef.current) return;
       // Prevent browser scroll takeover during active drag
       if ('touches' in ev && ev.cancelable) ev.preventDefault();
-      
+
       const cx = 'touches' in ev ? ev.touches[0].clientX : ev.clientX;
       const cy = 'touches' in ev ? ev.touches[0].clientY : ev.clientY;
       const r = resizeStartRef.current;
@@ -658,7 +736,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
                 onClick={(e) => { e.stopPropagation(); handleReact(emoji); }}
                 className={cn(
                   "flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] transition-all no-drag hover:scale-110 active:scale-95",
-                  users.includes(userId) ? "bg-emerald-500/80 border border-emerald-400 text-white shadow-lg" : "bg-zinc-800/90 backdrop-blur-md border border-white/10 text-zinc-300 hover:bg-zinc-700"
+                  (users as string[]).includes(userId) ? "bg-emerald-500/80 border border-emerald-400 text-white shadow-lg" : "bg-zinc-800/90 backdrop-blur-md border border-white/10 text-zinc-300 hover:bg-zinc-700"
                 )}
               >
                 <span>{emoji}</span>
@@ -747,7 +825,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
                   "border border-white/10 shadow-[0_0_50px_-12px_rgba(0,0,0,0.5)] flex flex-col group/chat relative overflow-hidden",
                   isRoomFullscreen ? "bg-black/95 backdrop-blur-3xl rounded-none border-y-0" : mobile ? "bg-black/30 backdrop-blur-xl rounded-t-3xl border-b-0" : "bg-black/50 backdrop-blur-2xl rounded-3xl"
                 )}
-                style={{ height: isRoomFullscreen ? (mobile ? `calc(100vh - ${keyboardOffset}px)` : '100%') : isFullscreen ? '100%' : mobile ? (keyboardOffset > 0 ? `min(100vh, calc(100vh - ${keyboardOffset}px))` : `${chatSize.h}px`) : `${chatSize.h}px`, width: '100%' }}
+                style={{ height: isRoomFullscreen ? (mobile ? (showVirtualKeyboard ? '100%' : `calc(100vh - ${keyboardOffset}px)`) : '100%') : isFullscreen ? '100%' : mobile ? (keyboardOffset > 0 ? `min(100vh, calc(100vh - ${keyboardOffset}px))` : `${chatSize.h}px`) : `${chatSize.h}px`, width: '100%' }}
               >
                 {/* Fullscreen Resizer */}
                 {isRoomFullscreen && isOpen && (
@@ -806,7 +884,11 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
                   </div>
                 </div>
 
-                <div ref={scrollRef} className="no-drag flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-white/10 relative">
+                <div 
+                  ref={scrollRef} 
+                  className="no-drag flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-white/10 relative"
+                  onClick={() => setShowVirtualKeyboard(false)}
+                >
                   <div
                     style={{
                       height: `${rowVirtualizer.getTotalSize()}px`,
@@ -887,8 +969,17 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
                     </button>
                     <input
                       value={input}
+                      onFocus={() => {
+                        if (mobile && isRoomFullscreen) {
+                          setShowVirtualKeyboard(true);
+                        }
+                      }}
                       onChange={(e) => { setInput(e.target.value); handleTyping(true); }}
-                      onBlur={() => handleTyping(false)}
+                      onBlur={() => {
+                        // Small delay to allow clicking keyboard keys
+                        setTimeout(() => handleTyping(false), 200);
+                      }}
+                      inputMode={mobile && isRoomFullscreen ? 'none' : 'text'}
                       placeholder={isRecording ? "Recording..." : "Type a message..."}
                       className="flex-1 bg-transparent outline-none text-sm w-full"
                       disabled={isRecording}
@@ -897,6 +988,17 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
                       <Send className="w-4 h-4" />
                     </button>
                   </div>
+                  <AnimatePresence>
+                    {showVirtualKeyboard && (
+                      <VirtualKeyboard 
+                        onKey={(k) => setInput(prev => prev + k)}
+                        onBackspace={() => setInput(prev => prev.slice(0, -1))}
+                        onEnter={sendMessage}
+                        onHide={() => setShowVirtualKeyboard(false)}
+                        className="mt-4"
+                      />
+                    )}
+                  </AnimatePresence>
                 </form>
               </motion.div>
             ) : (
