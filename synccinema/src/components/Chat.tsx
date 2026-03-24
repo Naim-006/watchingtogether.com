@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Draggable from 'react-draggable';
 import { socket } from '../lib/socket';
-import { Send, Image as ImageIcon, Mic, X, MessageSquare, Check, CheckCheck, Maximize2, Minimize2, GripVertical, Smile, Edit2, Trash2, Play, Pause } from 'lucide-react';
+import { Send, Image as ImageIcon, Mic, X, MessageSquare, Check, CheckCheck, Maximize2, Minimize2, GripVertical, Smile, Edit2, Trash2, Play, Pause, MoreVertical } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
@@ -105,9 +105,9 @@ interface ChatProps {
   isRoomFullscreen?: boolean;
 }
 
-const VirtualKeyboard: React.FC<{ 
-  onKey: (k: string) => void; 
-  onBackspace: () => void; 
+const VirtualKeyboard: React.FC<{
+  onKey: (k: string) => void;
+  onBackspace: () => void;
   onEnter: () => void;
   onHide: () => void;
   height: number;
@@ -162,7 +162,7 @@ const VirtualKeyboard: React.FC<{
       onMouseDown={(e) => e.preventDefault()}
     >
       {/* Keyboard Resize Handle */}
-      <div 
+      <div
         onMouseDown={onResize}
         onTouchStart={onResize}
         className="h-4 w-full flex items-center justify-center cursor-ns-resize group/kb-handle active:bg-white/5 shrink-0 touch-none"
@@ -172,25 +172,25 @@ const VirtualKeyboard: React.FC<{
 
       <div className="flex-1 overflow-y-auto px-1.5 pb-2">
         <div className="flex flex-col gap-1 max-w-xl mx-auto py-1">
-        {keys[layout].map((row, i) => (
-          <div key={i} className="flex justify-center gap-1">
-            {row.map((key) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => handleKey(key)}
-                className={cn(
-                  "h-8 rounded-lg flex items-center justify-center font-medium transition-all active:scale-95 active:bg-white/20 shadow-sm",
-                  key === 'Space' ? "flex-[4] bg-white/10" : 
-                  (key === 'Shift' || key === '⌫' || key === 'Done' || key === '?123' || key === 'ABC') ? "flex-[1.5] bg-white/5 text-[10px] uppercase font-bold" : 
-                  "flex-1 bg-white/10 hover:bg-white/20 text-xs"
-                )}
-              >
-                {key === 'Shift' ? (isShift ? '⬆' : '⇧') : (isShift && key.length === 1 ? key.toUpperCase() : key)}
-              </button>
-            ))}
-          </div>
-        ))}
+          {keys[layout].map((row, i) => (
+            <div key={i} className="flex justify-center gap-1">
+              {row.map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => handleKey(key)}
+                  className={cn(
+                    "h-8 rounded-lg flex items-center justify-center font-medium transition-all active:scale-95 active:bg-white/20 shadow-sm",
+                    key === 'Space' ? "flex-[4] bg-white/10" :
+                      (key === 'Shift' || key === '⌫' || key === 'Done' || key === '?123' || key === 'ABC') ? "flex-[1.5] bg-white/5 text-[10px] uppercase font-bold" :
+                        "flex-1 bg-white/10 hover:bg-white/20 text-xs"
+                  )}
+                >
+                  {key === 'Shift' ? (isShift ? '⬆' : '⇧') : (isShift && key.length === 1 ? key.toUpperCase() : key)}
+                </button>
+              ))}
+            </div>
+          ))}
         </div>
       </div>
     </motion.div>
@@ -270,7 +270,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
       // Allow only north ('n') resize on mobile to act as a bottom sheet puller
       if (mobile && direction !== 'n') return;
     }
- 
+
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
     resizeStartRef.current = { x: clientX, y: clientY, w: chatSize.w, h: chatSize.h };
@@ -280,13 +280,13 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
       if (!resizeStartRef.current) return;
       // Prevent browser scroll takeover during active drag
       if ('touches' in ev && ev.cancelable) ev.preventDefault();
- 
+
       const cx = 'touches' in ev ? ev.touches[0].clientX : ev.clientX;
       const cy = 'touches' in ev ? ev.touches[0].clientY : ev.clientY;
       const r = resizeStartRef.current;
       const dx = cx - r.x;
       const dy = cy - r.y;
- 
+
       if (direction === 'kb') {
         const newKbH = initialKbHeight - dy;
         setKbHeight(Math.max(180, Math.min(window.innerHeight * 0.7, newKbH)));
@@ -295,12 +295,12 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
 
       let newW = r.w;
       let newH = r.h;
- 
+
       if (direction.includes('e')) newW = r.w + dx;
       if (direction.includes('w')) newW = r.w - dx;
       if (direction.includes('s')) newH = r.h + dy;
       if (direction.includes('n')) newH = r.h - dy;
- 
+
       setChatSize({
         w: Math.max(280, Math.min(mobile || isRoomFullscreen ? window.innerWidth * 0.8 : 800, newW)),
         h: Math.max(300, Math.min(mobile ? window.innerHeight - 50 : window.innerHeight * 0.9, newH))
@@ -612,42 +612,38 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
 
     const [showReactions, setShowReactions] = useState(false);
     const [showActions, setShowActions] = useState(false);
-    const timeoutRef = useRef<any>(null);
-
-    const handlePressStart = () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      timeoutRef.current = setTimeout(() => {
-        setShowActions(true);
-        if (window.navigator.vibrate) window.navigator.vibrate(40);
-      }, 500);
-    };
 
     const handlePressEnd = () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      // Logic removed to favor visible menu button
     };
 
     useEffect(() => {
       if (!showActions && !showReactions) return;
-      const handler = () => {
+      const handler = (e: any) => {
+        // Prevent closing if we click inside the menu or its reactions
+        if (itemRef.current?.contains(e.target)) return;
+
         setShowActions(false);
         setShowReactions(false);
       };
-      window.addEventListener('mousedown', handler);
-      window.addEventListener('touchstart', handler);
+      document.addEventListener('mousedown', handler);
+      document.addEventListener('touchstart', handler);
       return () => {
-        window.removeEventListener('mousedown', handler);
-        window.removeEventListener('touchstart', handler);
+        document.removeEventListener('mousedown', handler);
+        document.removeEventListener('touchstart', handler);
       };
     }, [showActions, showReactions]);
+
+    const toggleActions = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+      setShowReactions(false);
+      setShowActions(prev => !prev);
+    };
 
     return (
       <div
         ref={itemRef}
-        onMouseDown={handlePressStart}
-        onMouseUp={handlePressEnd}
-        onMouseLeave={handlePressEnd}
-        onTouchStart={handlePressStart}
-        onTouchEnd={handlePressEnd}
         className={cn(
           "flex flex-col max-w-[90%] group relative select-none",
           msg.senderId === userId ? "ml-auto items-end" : "items-start"
@@ -665,93 +661,123 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
           </div>
         )}
 
-        <div className="relative group/bubble flex items-center gap-2">
-          <AnimatePresence>
-            {showActions && (
-              <div
-                className={cn(
-                  "no-drag absolute -top-12 z-[70] bg-zinc-900 border border-white/10 rounded-2xl p-1 flex items-center gap-1 shadow-2xl backdrop-blur-2xl",
-                  msg.senderId === userId ? "right-2" : "left-2"
-                )}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button
-                  onClick={() => { setShowReactions(true); setShowActions(false); }}
-                  className="p-2 hover:bg-white/10 rounded-xl text-zinc-300 hover:text-white transition-colors"
+        <div className="relative group/bubble flex items-center min-h-[32px]">
+          {/* Action Menu Button (Absolutely positioned to prevent layout shifts) */}
+          <button
+            onClick={toggleActions}
+            onMouseDown={(e) => e.stopPropagation()} 
+            className={cn(
+              "absolute top-1/2 -translate-y-1/2 p-2 opacity-0 group-hover/bubble:opacity-100 transition-all hover:bg-white/10 rounded-full z-10",
+              msg.senderId === userId ? "-left-10" : "-right-10"
+            )}
+          >
+            <MoreVertical className="w-4 h-4 text-zinc-400 hover:text-white transition-colors" />
+          </button>
+
+          <div className="relative flex-1">
+            <AnimatePresence>
+              {showActions && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className={cn(
+                    "no-drag absolute -top-12 z-[100] bg-zinc-900 border border-white/15 rounded-2xl p-1.5 flex items-center gap-1.5 shadow-2xl backdrop-blur-xl",
+                    msg.senderId === userId ? "right-0" : "left-0"
+                  )}
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  <Smile className="w-4 h-4" />
-                </button>
-                {msg.senderId === userId && (
-                  <>
-                    <button
-                      onClick={() => { startEdit(); setShowActions(false); }}
-                      className="p-2 hover:bg-white/10 rounded-xl text-zinc-300 hover:text-white transition-colors"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => { handleDelete(); setShowActions(false); }}
-                      className="p-2 hover:bg-white/10 rounded-xl text-zinc-300 hover:text-red-500 transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-          </AnimatePresence>
+                  <button
+                    onClick={() => { setShowReactions(true); setShowActions(false); }}
+                    className="p-2 hover:bg-white/10 rounded-xl text-zinc-300 hover:text-white transition-colors flex items-center gap-2"
+                    title="React"
+                  >
+                    <Smile className="w-4 h-4" />
+                  </button>
+                  {msg.senderId === userId && (
+                    <>
+                      <button
+                        onClick={() => { startEdit(); setShowActions(false); }}
+                        className="p-2 hover:bg-white/10 rounded-xl text-zinc-300 hover:text-white transition-colors"
+                        title="Edit"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => { handleDelete(); setShowActions(false); }}
+                        className="p-2 hover:bg-white/10 rounded-xl text-zinc-300 hover:text-red-500 transition-colors"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-          <div className={cn(
-            "px-3 py-2 rounded-2xl text-sm overflow-hidden backdrop-blur-sm shadow-sm transition-transform active:scale-95",
-            msg.senderId === userId
-              ? "bg-emerald-600/80 text-white rounded-tr-none"
-              : "bg-white/10 text-white rounded-tl-none border border-white/5"
-          )}>
-            {editingMessageId === msg.id ? (
-              <form onSubmit={saveEdit} className="no-drag flex flex-col gap-2 min-w-[180px]">
-                <textarea
-                  value={editContent}
-                  onChange={(e) => setEditContent(e.target.value)}
-                  className="bg-black/20 border border-white/10 rounded-lg p-2 text-sm outline-none focus:border-emerald-500/50 resize-none text-white"
-                  rows={2}
-                  autoFocus
+            <AnimatePresence>
+              {showReactions && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                  className={cn(
+                    "no-drag absolute -top-12 z-[80] bg-zinc-900 border border-white/10 rounded-full px-2 py-1 flex gap-2 shadow-2xl backdrop-blur-xl",
+                    msg.senderId === userId ? "right-0" : "left-0"
+                  )}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {['❤️', '😂', '😮', '😢', '🔥', '👍'].map(emoji => (
+                    <button
+                      key={emoji}
+                      onClick={(e) => { e.stopPropagation(); handleReact(emoji); }}
+                      className="hover:scale-125 transition-transform text-xs p-1"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className={cn(
+              "px-3 py-2 rounded-2xl text-sm overflow-hidden backdrop-blur-sm shadow-sm transition-transform active:scale-[0.98]",
+              msg.senderId === userId
+                ? "bg-emerald-600/80 text-white rounded-tr-none"
+                : "bg-white/10 text-white rounded-tl-none border border-white/5"
+            )}>
+              {editingMessageId === msg.id ? (
+                <form onSubmit={saveEdit} className="no-drag flex flex-col gap-2 min-w-[200px] py-1">
+                  <textarea
+                    value={editContent}
+                    onChange={(e) => setEditContent(e.target.value)}
+                    className="bg-black/40 border border-white/10 rounded-xl p-2.5 text-xs outline-none focus:border-emerald-500/50 resize-none text-white w-full"
+                    rows={2}
+                    autoFocus
+                  />
+                  <div className="flex justify-end gap-3 px-1">
+                    <button type="button" onClick={() => setEditingMessageId(null)} className="text-[10px] font-bold text-zinc-500 hover:text-zinc-300 transition-colors">Cancel</button>
+                    <button type="submit" className="text-[10px] text-emerald-500 font-black uppercase tracking-widest hover:text-emerald-400 transition-colors">Save Changes</button>
+                  </div>
+                </form>
+              ) : msg.type === 'image' ? (
+                <img
+                  src={msg.fileUrl}
+                  alt="Shared"
+                  className="max-w-full rounded-lg cursor-zoom-in hover:opacity-90 transition-opacity"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setFullscreenImage(msg.fileUrl!);
+                  }}
                 />
-                <div className="flex justify-end gap-2">
-                  <button type="button" onClick={() => setEditingMessageId(null)} className="text-[10px] hover:underline">Cancel</button>
-                  <button type="submit" className="text-[10px] text-emerald-500 font-bold hover:underline">Save</button>
-                </div>
-              </form>
-            ) : msg.type === 'image' ? (
-              <img
-                src={msg.fileUrl}
-                alt="Shared"
-                className="max-w-full rounded-lg cursor-zoom-in hover:opacity-90 transition-opacity"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setFullscreenImage(msg.fileUrl!);
-                }}
-              />
-            ) : msg.type === 'voice' ? (
-              <VoiceMessage url={msg.fileUrl!} />
-            ) : (
-              msg.content
-            )}
+              ) : msg.type === 'voice' ? (
+                <VoiceMessage url={msg.fileUrl!} />
+              ) : (
+                msg.content
+              )}
+            </div>
           </div>
-
-          <AnimatePresence>
-            {showReactions && (
-              <div
-                className={cn(
-                  "no-drag absolute -top-10 z-[80] bg-zinc-900 border border-white/10 rounded-full px-2 py-1 flex gap-2 shadow-2xl backdrop-blur-xl",
-                  msg.senderId === userId ? "right-2" : "left-2"
-                )}
-              >
-                {['❤️', '😂', '😮', '😢', '🔥', '👍'].map(emoji => (
-                  <button key={emoji} onClick={(e) => { e.stopPropagation(); handleReact(emoji); }} className="hover:scale-125 transition-transform text-xs p-1">{emoji}</button>
-                ))}
-              </div>
-            )}
-          </AnimatePresence>
         </div>
 
         {msg.reactions && Object.keys(msg.reactions).length > 0 && (
@@ -855,7 +881,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
               >
                 {/* Fullscreen Resizer */}
                 {isRoomFullscreen && isOpen && (
-                   <div
+                  <div
                     onTouchStart={(e) => startResize(e, 'w')}
                     onMouseDown={(e) => startResize(e, 'w')}
                     className="absolute -left-4 inset-y-0 w-8 flex items-center justify-center cursor-ew-resize z-[200] group/resizer touch-none"
@@ -911,8 +937,8 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
                   </div>
                 )}
 
-                <div 
-                  ref={scrollRef} 
+                <div
+                  ref={scrollRef}
                   className="no-drag flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-white/10 relative"
                   onClick={() => setShowVirtualKeyboard(false)}
                 >
@@ -957,8 +983,8 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
                   </div>
                 )}
 
-                <form 
-                  onSubmit={sendMessage} 
+                <form
+                  onSubmit={sendMessage}
                   className={cn(
                     "no-drag bg-white/5 border-t border-white/10 relative shrink-0 transition-all",
                     mobile && isRoomFullscreen && showVirtualKeyboard ? "p-2" : "p-4"
@@ -983,9 +1009,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
                   </AnimatePresence>
 
                   <div className="flex items-center gap-2 bg-black/40 rounded-xl px-3 py-2 border border-white/5 focus-within:border-emerald-500/50 transition-colors">
-                    <button type="button" onClick={() => setShowEmojiPicker(p => !p)} className={cn("p-1 transition-colors", showEmojiPicker ? "text-emerald-500" : "hover:text-emerald-500")}>
-                      <Smile className="w-4 h-4" />
-                    </button>
+
                     <button type="button" onClick={() => fileInputRef.current?.click()} className="p-1 hover:text-emerald-500">
                       <ImageIcon className="w-4 h-4" />
                     </button>
@@ -1024,7 +1048,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
                   </div>
                   <AnimatePresence>
                     {showVirtualKeyboard && (
-                      <VirtualKeyboard 
+                      <VirtualKeyboard
                         onKey={(k) => setInput(prev => prev + k)}
                         onBackspace={() => setInput(prev => prev.slice(0, -1))}
                         onEnter={sendMessage}
