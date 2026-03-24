@@ -530,7 +530,7 @@ export const Room: React.FC = () => {
                 <p className="text-zinc-500 text-xs md:text-sm font-medium mt-1 truncate max-w-xs md:max-w-lg">{videoUrl}</p>
                 {currentVideoAddedBy && (
                   <p className="text-xs text-emerald-500 mt-2 font-bold uppercase tracking-widest flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 display-inline-block" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
                     Added by: {currentVideoAddedBy}
                   </p>
                 )}
