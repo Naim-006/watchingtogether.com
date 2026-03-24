@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
+import { getVideoMetadata, getSyncVideoMetadata } from '../lib/videoMetadata';
 
 interface Member {
   userId: string;
@@ -37,6 +38,8 @@ interface VideoHistoryItem {
   id: string;
   video_url: string;
   video_type: 'youtube' | 'mp4' | 'upload';
+  title?: string;
+  thumbnail_url?: string;
   added_by: string;
   created_at: string;
   users?: { username: string };
@@ -154,6 +157,10 @@ export const Room: React.FC = () => {
       .on('postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'room_videos', filter: `room_id=eq.${roomId}` },
         () => fetchHistory()
+      )
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'room_videos', filter: `room_id=eq.${roomId}` },
+        () => fetchHistory()
       ).subscribe();
 
     return () => {
@@ -180,22 +187,34 @@ export const Room: React.FC = () => {
 
     // Save to history explicitly from the frontend to bypass backend column mismatches
     if (roomId) {
-      const { error } = await supabase.from('room_videos').insert({
-        room_id: roomId,
-        video_type: videoType,
-        video_url: url,
-        added_by: userId
-      });
-      if (error) console.error("History save error:", error);
-      else {
-        setVideoHistory(prev => [{
-          id: Math.random().toString(),
+      try {
+        const metadata = await getVideoMetadata(url, videoType);
+        
+        const { error } = await supabase.from('room_videos').insert({
+          room_id: roomId,
+          video_type: videoType,
           video_url: url,
-          video_type: videoType as any,
           added_by: userId,
-          created_at: new Date().toISOString(),
-          users: { username }
-        }, ...prev]);
+          title: metadata.title,
+          thumbnail_url: metadata.thumbnailUrl
+        });
+
+        if (error) console.error("History save error:", error);
+        else {
+          // Optimistically update local state to show metadata immediately
+          setVideoHistory(prev => [{
+            id: Math.random().toString(),
+            video_url: url,
+            video_type: videoType as any,
+            title: metadata.title,
+            thumbnail_url: metadata.thumbnailUrl,
+            added_by: userId,
+            created_at: new Date().toISOString(),
+            users: { username }
+          }, ...prev]);
+        }
+      } catch (err) {
+        console.error("Metadata fetch/save error:", err);
       }
     }
   };
@@ -376,30 +395,63 @@ export const Room: React.FC = () => {
             <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 flex items-center gap-2">
               <Clock className="w-3 h-3" /> History & Library
             </h3>
-            <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+            <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
               {videoHistory.length === 0 ? (
-                <p className="text-xs text-zinc-600 font-medium text-center py-4 border border-dashed border-white/10 rounded-xl">No history yet.</p>
+                <div className="py-8 px-4 border border-dashed border-white/10 rounded-2xl flex flex-col items-center justify-center gap-2">
+                  <PlayCircle className="w-8 h-8 text-zinc-700" />
+                  <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest text-center">No history yet.</p>
+                </div>
               ) : (
-                videoHistory.map((video) => (
-                  <div
-                    key={video.id}
-                    onClick={() => syncNewVideo(video.video_url, video.video_type)}
-                    className={cn(
-                      "p-3 rounded-xl border border-white/5 bg-white/5 hover:bg-white/10 transition-all flex items-start gap-3 flex-col cursor-pointer"
-                    )}
-                  >
-                    <div className="flex items-center gap-2 w-full">
-                      {video.video_type === 'youtube' ? <Youtube className="w-4 h-4 text-red-500 shrink-0" /> : <PlayCircle className="w-4 h-4 text-emerald-500 shrink-0" />}
-                      <span className="text-xs truncate text-zinc-300 font-medium" title={video.video_url}>
-                        {video.video_url.replace(/^https?:\/\//, '')}
-                      </span>
+                videoHistory.map((video) => {
+                  const syncMeta = getSyncVideoMetadata(video.video_url, video.video_type);
+                  const displayTitle = video.title || syncMeta.title;
+                  const displayThumbnail = video.thumbnail_url || syncMeta.thumbnailUrl;
+
+                  return (
+                    <div
+                      key={video.id}
+                      onClick={() => syncNewVideo(video.video_url, video.video_type)}
+                      className={cn(
+                        "group p-2 rounded-2xl border border-white/5 bg-white/5 hover:bg-white/10 hover:border-emerald-500/20 transition-all cursor-pointer flex gap-3 h-24 overflow-hidden relative"
+                      )}
+                    >
+                      {/* Thumbnail */}
+                      <div className="relative w-32 h-full rounded-xl overflow-hidden bg-zinc-900 shrink-0 border border-white/5">
+                        <img 
+                          src={displayThumbnail} 
+                          alt={displayTitle} 
+                          className="w-full h-full object-cover transition-transform group-hover:scale-110 duration-500"
+                        />
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <PlayCircle className="w-8 h-8 text-white drop-shadow-lg" />
+                        </div>
+                        <div className="absolute bottom-1 right-1 px-1 py-0.5 bg-black/80 rounded text-[8px] font-black text-white/80 uppercase">
+                          {video.video_type}
+                        </div>
+                      </div>
+
+                      {/* Content */}
+                      <div className="flex flex-col justify-between py-1 min-w-0">
+                        <div className="space-y-1">
+                           <h4 className="text-[11px] font-bold text-zinc-200 line-clamp-2 leading-tight group-hover:text-emerald-400 transition-colors">
+                             {displayTitle}
+                           </h4>
+                           <div className="flex items-center gap-1">
+                              <div className="w-3 h-3 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                              </div>
+                              <span className="text-[9px] text-zinc-500 font-bold truncate">
+                                {video.users?.username || 'Guest'}
+                              </span>
+                           </div>
+                        </div>
+                        <div className="text-[8px] text-zinc-600 font-black uppercase tracking-wider">
+                          {new Date(video.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex justify-between w-full text-[9px] text-zinc-500 font-bold uppercase mt-1">
-                      <span>{video.users?.username || (video.added_by ? `User ${video.added_by.substring(0, 4)}` : 'Guest')}</span>
-                      <span>{new Date(video.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
