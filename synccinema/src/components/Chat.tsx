@@ -110,8 +110,10 @@ const VirtualKeyboard: React.FC<{
   onBackspace: () => void; 
   onEnter: () => void;
   onHide: () => void;
+  height: number;
+  onResize: (e: React.MouseEvent | React.TouchEvent) => void;
   className?: string;
-}> = ({ onKey, onBackspace, onEnter, onHide, className }) => {
+}> = ({ onKey, onBackspace, onEnter, onHide, height, onResize, className }) => {
   const [layout, setLayout] = useState<'alpha' | 'symbols'>('alpha');
   const [isShift, setIsShift] = useState(false);
 
@@ -155,18 +157,30 @@ const VirtualKeyboard: React.FC<{
       initial={{ y: 20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       exit={{ y: 20, opacity: 0 }}
-      className={cn("bg-black/40 backdrop-blur-3xl border-t border-white/10 p-2 select-none no-drag touch-none", className)}
+      className={cn("bg-black/80 backdrop-blur-3xl border-t border-white/10 select-none no-drag touch-none flex flex-col", className)}
+      style={{ height: `${height}px` }}
       onMouseDown={(e) => e.preventDefault()}
     >
-      <div className="flex flex-col gap-1.5 max-w-xl mx-auto">
+      {/* Keyboard Resize Handle */}
+      <div 
+        onMouseDown={onResize}
+        onTouchStart={onResize}
+        className="h-6 w-full flex items-center justify-center cursor-ns-resize group/kb-handle active:bg-white/5 shrink-0"
+      >
+        <div className="w-16 h-1 bg-white/20 group-hover/kb-handle:bg-white/40 rounded-full transition-colors" />
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-2 pb-4">
+        <div className="flex flex-col gap-1.5 max-w-xl mx-auto py-2">
         {keys[layout].map((row, i) => (
           <div key={i} className="flex justify-center gap-1">
             {row.map((key) => (
               <button
                 key={key}
+                type="button"
                 onClick={() => handleKey(key)}
                 className={cn(
-                  "h-10 rounded-lg flex items-center justify-center font-medium transition-all active:scale-90 active:bg-white/20 shadow-sm",
+                  "h-10 rounded-lg flex items-center justify-center font-medium transition-all active:scale-95 active:bg-white/20 shadow-sm",
                   key === 'Space' ? "flex-[4] bg-white/10" : 
                   (key === 'Shift' || key === '⌫' || key === 'Done' || key === '?123' || key === 'ABC') ? "flex-[1.5] bg-white/5 text-[10px] uppercase font-bold" : 
                   "flex-1 bg-white/10 hover:bg-white/20 text-sm"
@@ -177,6 +191,7 @@ const VirtualKeyboard: React.FC<{
             ))}
           </div>
         ))}
+        </div>
       </div>
     </motion.div>
   );
@@ -201,9 +216,9 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
   const [editContent, setEditContent] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showVirtualKeyboard, setShowVirtualKeyboard] = useState(false);
+  const [kbHeight, setKbHeight] = useState(240);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
-  const isMobile = () => window.innerWidth < 768;
-  const [mobile, setMobile] = React.useState(() => window.innerWidth < 768);
+  const [mobile, setMobile] = React.useState(false);
 
   useEffect(() => {
     const handler = () => {
@@ -249,37 +264,43 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
   // Resize handle logic
   const startResize = useCallback((e: React.MouseEvent | React.TouchEvent, direction: string) => {
     e.stopPropagation();
-
     if (isRoomFullscreen) {
-      if (direction !== 'w') return;
+      if (direction !== 'w' && direction !== 'kb') return;
     } else {
       // Allow only north ('n') resize on mobile to act as a bottom sheet puller
       if (mobile && direction !== 'n') return;
     }
-
+ 
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
     resizeStartRef.current = { x: clientX, y: clientY, w: chatSize.w, h: chatSize.h };
+    const initialKbHeight = kbHeight;
 
     const onMove = (ev: MouseEvent | TouchEvent) => {
       if (!resizeStartRef.current) return;
       // Prevent browser scroll takeover during active drag
       if ('touches' in ev && ev.cancelable) ev.preventDefault();
-
+ 
       const cx = 'touches' in ev ? ev.touches[0].clientX : ev.clientX;
       const cy = 'touches' in ev ? ev.touches[0].clientY : ev.clientY;
       const r = resizeStartRef.current;
       const dx = cx - r.x;
       const dy = cy - r.y;
+ 
+      if (direction === 'kb') {
+        const newKbH = initialKbHeight - dy;
+        setKbHeight(Math.max(180, Math.min(window.innerHeight * 0.7, newKbH)));
+        return;
+      }
 
       let newW = r.w;
       let newH = r.h;
-
+ 
       if (direction.includes('e')) newW = r.w + dx;
       if (direction.includes('w')) newW = r.w - dx;
       if (direction.includes('s')) newH = r.h + dy;
       if (direction.includes('n')) newH = r.h - dy;
-
+ 
       setChatSize({
         w: Math.max(280, Math.min(mobile || isRoomFullscreen ? window.innerWidth * 0.8 : 800, newW)),
         h: Math.max(300, Math.min(mobile ? window.innerHeight - 50 : window.innerHeight * 0.9, newH))
@@ -827,7 +848,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
                 exit={{ opacity: 0, y: 40 }}
                 transition={{ type: 'spring', stiffness: 320, damping: 28 }}
                 className={cn(
-                  "border border-white/10 shadow-[0_0_50px_-12px_rgba(0,0,0,0.5)] flex flex-col group/chat relative overflow-hidden",
+                  "border border-white/10 shadow-[0_0_50px_-12px_rgba(0,0,0,0.5)] flex flex-col group/chat relative",
                   isRoomFullscreen ? "bg-black/95 backdrop-blur-3xl rounded-none border-y-0" : mobile ? "bg-black/30 backdrop-blur-xl rounded-t-3xl border-b-0" : "bg-black/50 backdrop-blur-2xl rounded-3xl"
                 )}
                 style={{ height: isRoomFullscreen ? (mobile ? (showVirtualKeyboard ? '100%' : `calc(100vh - ${keyboardOffset}px)`) : '100%') : isFullscreen ? '100%' : mobile ? (keyboardOffset > 0 ? `min(100vh, calc(100vh - ${keyboardOffset}px))` : `${chatSize.h}px`) : `${chatSize.h}px`, width: '100%' }}
@@ -837,7 +858,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
                   <div
                     onTouchStart={(e) => startResize(e, 'w')}
                     onMouseDown={(e) => startResize(e, 'w')}
-                    className="absolute -left-4 inset-y-0 w-8 flex items-center justify-center cursor-ew-resize z-[200] touch-none group/resizer"
+                    className="absolute -left-4 inset-y-0 w-8 flex items-center justify-center cursor-ew-resize z-[200] group/resizer"
                   >
                     <div className="h-12 w-1.5 bg-white/20 group-hover/resizer:bg-white/60 transition-colors rounded-full" />
                   </div>
@@ -974,9 +995,8 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
                     </button>
                     <input
                       value={input}
-                      onFocus={(e) => {
+                      onFocus={() => {
                         if (mobile && isRoomFullscreen) {
-                          e.preventDefault(); // Extra safeguard
                           setShowVirtualKeyboard(true);
                         }
                       }}
@@ -1002,6 +1022,8 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
                         onBackspace={() => setInput(prev => prev.slice(0, -1))}
                         onEnter={sendMessage}
                         onHide={() => setShowVirtualKeyboard(false)}
+                        height={kbHeight}
+                        onResize={(e) => startResize(e as any, 'kb')}
                         className="mt-4"
                       />
                     )}
