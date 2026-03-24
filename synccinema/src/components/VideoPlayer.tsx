@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactPlayer from 'react-player';
 import { socket } from '../lib/socket';
-import { Play, Pause, RotateCcw, RotateCw, Volume2, VolumeX, Maximize, FastForward, Rewind } from 'lucide-react';
+import { Play, Pause, RotateCcw, RotateCw, Maximize, FastForward, Rewind } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 
@@ -299,10 +299,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, isHost, roomId, u
             <button onClick={() => handleSkip(10)} className="text-white hover:text-emerald-500 transition-colors">
               <RotateCw size={20} />
             </button>
-          </div>
-          <div className="flex items-center gap-2">
-            <Volume2 size={20} className="text-white/60" />
-            <input type="range" min={0} max={1} step="any" value={volume} onChange={e => setVolume(parseFloat(e.target.value))} className="w-20 hidden group-hover:block accent-white" />
           </div>
           <div className="ml-auto flex items-center gap-4">
             <select
