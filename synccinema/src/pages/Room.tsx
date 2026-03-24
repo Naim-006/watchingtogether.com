@@ -454,7 +454,7 @@ export const Room: React.FC = () => {
           <div className="absolute inset-0 bg-gradient-radial from-emerald-500/5 via-transparent to-transparent pointer-events-none" />
 
           <div className="w-full max-w-5xl z-10">
-            <div ref={fullscreenContainerRef} className={cn("transition-all duration-300 relative w-full", isFullscreen && "bg-black w-screen h-screen flex flex-row items-center justify-center overflow-hidden")}>
+            <div ref={fullscreenContainerRef} className={cn("transition-all duration-300 relative w-full", isFullscreen && "bg-black w-screen h-screen flex flex-row items-center justify-center")}>
               <AnimatePresence mode="wait">
                 <motion.div
                   key={videoUrl}
