@@ -76,7 +76,21 @@ export const Room: React.FC = () => {
 
   useEffect(() => {
     const handleFSChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+      const isFS = !!document.fullscreenElement;
+      setIsFullscreen(isFS);
+
+      // Auto-orientation for mobile
+      if (window.innerWidth < 768 && (window as any).screen?.orientation?.lock) {
+        if (isFS) {
+          (window as any).screen.orientation.lock('landscape').catch(() => {});
+        } else {
+          (window as any).screen.orientation.lock('portrait').catch(() => {});
+          // Unlock after a brief delay to allow user freedom
+          setTimeout(() => {
+            (window as any).screen.orientation.unlock?.();
+          }, 1000);
+        }
+      }
     };
     document.addEventListener('fullscreenchange', handleFSChange);
     return () => document.removeEventListener('fullscreenchange', handleFSChange);
