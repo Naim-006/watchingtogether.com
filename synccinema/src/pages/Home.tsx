@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Film, Plus, Users, ArrowRight, Crown, Clock, Trash2, LogIn, Search } from 'lucide-react';
 import { generateRoomCode, cn } from '../lib/utils';
 import { socket } from '../lib/socket';
+import { useAlert } from '../components/AlertProvider';
 
 interface RoomHistoryItem {
   roomId: string;
@@ -33,6 +34,7 @@ export const Home: React.FC = () => {
   const [isConnected, setIsConnected] = useState(socket.connected);
   const [showChoiceModal, setShowChoiceModal] = useState<{ code: string; username: string } | null>(null);
   const navigate = useNavigate();
+  const { showAlert, showConfirm } = useAlert();
 
   useEffect(() => {
     socket.connect();
@@ -51,7 +53,7 @@ export const Home: React.FC = () => {
   }, [username]);
 
   const handleCreateRoom = () => {
-    if (!username) return alert('Please enter a username');
+    if (!username) return showAlert({ message: 'Please enter a username', type: 'warning' });
     setLoading(true);
     const code = generateRoomCode();
 
@@ -65,7 +67,7 @@ export const Home: React.FC = () => {
 
   const handleJoinRoom = (code?: string) => {
     const targetCode = (code || roomCode);
-    if (!username || !targetCode) return alert('Please enter username and room code');
+    if (!username || !targetCode) return showAlert({ message: 'Please enter username and room code', type: 'warning' });
 
     setLoading(true);
     socket.connect();
@@ -80,7 +82,7 @@ export const Home: React.FC = () => {
         localStorage.setItem(JOINED_KEY, JSON.stringify(deduped));
         navigate(`/room/${targetCode}?username=${username}&role=viewer`);
       } else {
-        alert('This room is currently locked by the Host.');
+        showAlert({ message: 'This room is currently locked by the Host.', type: 'error' });
       }
     });
   };
@@ -286,7 +288,7 @@ export const Home: React.FC = () => {
                           <motion.button
                             whileTap={{ scale: 0.9 }}
                             onClick={() => {
-                              if (!username) return alert('Enter your name first');
+                              if (!username) return showAlert({ message: 'Enter your name first', type: 'warning' });
                               if (item.role === 'host') navigate(`/room/${item.roomId}?username=${username}&role=host`);
                               else handleJoinRoom(item.roomId);
                             }}
@@ -298,9 +300,9 @@ export const Home: React.FC = () => {
                           <motion.button
                             whileTap={{ scale: 0.9 }}
                             onClick={() => {
-                              if (confirm('Are you sure you want to remove this room from your history?')) {
+                              showConfirm('Are you sure you want to remove this room from your history?', () => {
                                 removeItem(historyKey, item.roomId, historySetter);
-                              }
+                              });
                             }}
                             className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors"
                             title="Remove"

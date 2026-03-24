@@ -158,17 +158,24 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, isHost, roomId, u
   };
 
   const handleDesktopClick = (e: React.MouseEvent, side: 'left' | 'right' | 'center') => {
+    e.stopPropagation();
+    revealControls();
+    
     if (clickTimeoutRef.current) {
       // Double tap detected
       clearTimeout(clickTimeoutRef.current);
       clickTimeoutRef.current = null;
       if (side === 'left') handleSeekInternal(-10);
       if (side === 'right') handleSeekInternal(10);
-      if (side === 'center') handlePlayPause(); // Center double-tap still toggles or does something else? Usually toggle.
+      // Center double-tap doesn't need to do anything else since first tap already handled play/pause
     } else {
       // Single tap potential
-      clickTimeoutRef.current = setTimeout(() => {
+      if (side === 'center') {
+        // Only toggle play/pause immediately if clicking the center
         handlePlayPause();
+      }
+      
+      clickTimeoutRef.current = setTimeout(() => {
         clickTimeoutRef.current = null;
       }, 250);
     }
@@ -191,10 +198,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, isHost, roomId, u
   return (
     <div
       ref={containerRef}
-      className="relative aspect-video bg-black rounded-xl overflow-hidden shadow-2xl"
+      className="relative aspect-video bg-black rounded-xl overflow-hidden shadow-2xl group"
       onMouseMove={revealControls}
       onMouseLeave={() => { if (playing) setShowControls(false); }}
-      onClick={revealControls}
+      onClick={(e) => {
+        // Check if we didn't click on a controller part
+        revealControls();
+      }}
     >
       <Player
         ref={playerRef}
@@ -262,12 +272,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, isHost, roomId, u
         "absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent flex flex-col gap-2 z-20 transition-all duration-500",
         showControls ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none"
       )}>
-        <input
-          type="range" min={0} max={1} step="any"
-          value={duration ? played : 0}
-          onChange={handleSeek}
-          className="w-full accent-emerald-500 cursor-pointer"
-        />
+        <div className="relative w-full h-4 flex items-center group/seeker">
+          <input
+            type="range" min={0} max={1} step="any"
+            value={duration ? played : 0}
+            onChange={handleSeek}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+          />
+          <div className="w-full h-1 bg-white/20 rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-emerald-500 rounded-full relative"
+              style={{ width: `${played * 100}%` }}
+            >
+              <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow-lg scale-0 group-hover/seeker:scale-100 transition-transform" />
+            </div>
+          </div>
+        </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-3">
             <button onClick={() => handleSkip(-10)} className="text-white hover:text-emerald-500 transition-colors">

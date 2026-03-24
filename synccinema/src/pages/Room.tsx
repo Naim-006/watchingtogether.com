@@ -26,6 +26,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { getVideoMetadata, getSyncVideoMetadata } from '../lib/videoMetadata';
+import { useAlert } from '../components/AlertProvider';
 
 interface Member {
   userId: string;
@@ -51,6 +52,7 @@ export const Room: React.FC = () => {
   const { roomId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { showAlert, showConfirm } = useAlert();
 
   const username = searchParams.get('username') || 'Guest';
   const roleFromUrl = searchParams.get('role') as 'host' | 'viewer' || 'viewer';
@@ -113,7 +115,7 @@ export const Room: React.FC = () => {
     socket.connect();
 
     socket.on('room:error', ({ message }) => {
-      alert(message);
+      showAlert({ message, type: 'error' });
       navigate('/');
     });
 
@@ -142,7 +144,7 @@ export const Room: React.FC = () => {
     });
 
     socket.on('room:kicked', ({ message }) => {
-      alert(message || 'You have been kicked from the room.');
+      showAlert({ message: message || 'You have been kicked from the room.', type: 'warning' });
       window.location.href = '/';
     });
 
@@ -255,7 +257,7 @@ export const Room: React.FC = () => {
       syncNewVideo(url, 'upload');
     } catch (err) {
       console.error('Video upload failed:', err);
-      alert('Upload failed. Please try again.');
+      showAlert({ message: 'Upload failed. Please try again.', type: 'error' });
     } finally {
       setIsUploadingVideo(false);
       if (videoFileRef.current) videoFileRef.current.value = '';
@@ -269,9 +271,9 @@ export const Room: React.FC = () => {
 
   const handleKickMember = (targetUserId: string) => {
     if (userRole !== 'host') return;
-    if (confirm('Are you sure you want to kick this member?')) {
+    showConfirm('Are you sure you want to kick this member?', () => {
       socket.emit('room:kick', { roomId, targetUserId });
-    }
+    });
   };
 
   const toggleLock = async () => {
@@ -304,7 +306,7 @@ export const Room: React.FC = () => {
           <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 rounded-full border border-white/10 hover:bg-white/10 transition-colors cursor-pointer group" onClick={() => {
             const link = `${window.location.origin}/room/${roomId}?username=${username}&role=viewer`;
             navigator.clipboard.writeText(link);
-            alert('Room link copied!');
+            showAlert({ message: 'Room link copied!', type: 'success' });
           }}>
             <span className="text-xs font-mono text-emerald-500 font-bold">{roomId}</span>
             <Share2 className="w-3 h-3 opacity-50 group-hover:opacity-100 transition-opacity" />

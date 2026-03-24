@@ -9,6 +9,7 @@ import { uploadToCloudinary } from '../lib/cloudinary';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import EmojiPicker, { Theme } from 'emoji-picker-react';
 import debounce from 'lodash/debounce';
+import { useAlert } from './AlertProvider';
 
 const VoiceMessage = ({ url }: { url: string }) => {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -220,6 +221,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
   const [kbHeight, setKbHeight] = useState(240);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [mobile, setMobile] = React.useState(false);
+  const { showAlert, showConfirm } = useAlert();
 
   useEffect(() => {
     const handler = () => {
@@ -594,9 +596,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
     };
 
     const handleDelete = () => {
-      if (confirm('Delete this message?')) {
-        socket.emit('chat:delete', { roomId, messageId: msg.id });
-      }
+      socket.emit('chat:delete', { roomId, messageId: msg.id });
     };
 
     const startEdit = () => {
@@ -614,6 +614,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
 
     const [showReactions, setShowReactions] = useState(false);
     const [showActions, setShowActions] = useState(false);
+    const [confirmingDelete, setConfirmingDelete] = useState(false);
     const [swipeX, setSwipeX] = useState(0);
     const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const lastClickTime = useRef<number>(0);
@@ -643,6 +644,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
       e?.stopPropagation();
       e?.preventDefault();
       setShowReactions(false);
+      setConfirmingDelete(false);
       setShowActions(prev => !prev);
     };
 
@@ -747,46 +749,64 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
             </button>
 
             <div className="relative">
-              <AnimatePresence mode="wait">
-                {showActions && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                    className={cn(
-                      "no-drag absolute -top-14 z-[100] bg-zinc-900 border border-white/15 rounded-2xl p-1.5 flex items-center gap-1.5 shadow-2xl backdrop-blur-xl",
-                      msg.senderId === userId ? "right-0" : "left-0"
+                    <AnimatePresence mode="wait">
+                    {showActions && (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                        className={cn(
+                          "no-drag absolute -top-14 z-[100] bg-zinc-900 border border-white/15 rounded-2xl p-1.5 flex items-center gap-1.5 shadow-2xl backdrop-blur-xl",
+                          msg.senderId === userId ? "right-0" : "left-0"
+                        )}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {confirmingDelete ? (
+                          // Inline confirmation row
+                          <>
+                            <span className="text-[10px] text-zinc-400 px-1 whitespace-nowrap">Delete?</span>
+                            <button
+                              onClick={() => setConfirmingDelete(false)}
+                              className="px-2.5 py-1.5 text-[10px] font-bold rounded-xl bg-white/5 hover:bg-white/10 text-zinc-300 transition-colors"
+                            >No</button>
+                            <button
+                              onClick={() => { handleDelete(); setShowActions(false); setConfirmingDelete(false); }}
+                              className="px-2.5 py-1.5 text-[10px] font-bold rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 transition-colors"
+                            >Yes</button>
+                          </>
+                        ) : (
+                          // Normal action buttons
+                          <>
+                            <button
+                              onClick={() => { setShowReactions(true); setShowActions(false); }}
+                              className="p-2.5 hover:bg-white/10 rounded-xl text-zinc-300 hover:text-white transition-colors flex items-center gap-2"
+                              title="React"
+                            >
+                              <Smile className="w-4 h-4" />
+                            </button>
+                            {msg.senderId === userId && (
+                              <>
+                                <button
+                                  onClick={() => { startEdit(); setShowActions(false); }}
+                                  className="p-2.5 hover:bg-white/10 rounded-xl text-zinc-300 hover:text-white transition-colors"
+                                  title="Edit"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => setConfirmingDelete(true)}
+                                  className="p-2.5 hover:bg-white/10 rounded-xl text-zinc-300 hover:text-red-500 transition-colors"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </>
+                            )}
+                          </>
+                        )}
+                      </motion.div>
                     )}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <button
-                      onClick={() => { setShowReactions(true); setShowActions(false); }}
-                      className="p-2.5 hover:bg-white/10 rounded-xl text-zinc-300 hover:text-white transition-colors flex items-center gap-2"
-                      title="React"
-                    >
-                      <Smile className="w-4 h-4" />
-                    </button>
-                    {msg.senderId === userId && (
-                      <>
-                        <button
-                          onClick={() => { startEdit(); setShowActions(false); }}
-                          className="p-2.5 hover:bg-white/10 rounded-xl text-zinc-300 hover:text-white transition-colors"
-                          title="Edit"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => { handleDelete(); setShowActions(false); }}
-                          className="p-2.5 hover:bg-white/10 rounded-xl text-zinc-300 hover:text-red-500 transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </>
-                    )}
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                    </AnimatePresence>
 
               <AnimatePresence>
                 {showReactions && (

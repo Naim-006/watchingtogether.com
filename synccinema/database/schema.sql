@@ -30,11 +30,13 @@ CREATE TABLE IF NOT EXISTS public.room_members (
 
 -- Room video state table
 CREATE TABLE IF NOT EXISTS public.room_videos (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(), -- Keep UUID for internal records if desired
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     room_id TEXT REFERENCES public.rooms(id) ON DELETE CASCADE,
     video_type TEXT CHECK (video_type IN ('mp4', 'youtube', 'upload')),
     video_url TEXT NOT NULL,
-    set_by TEXT REFERENCES public.users(id),
+    title TEXT,
+    thumbnail_url TEXT,
+    added_by TEXT REFERENCES public.users(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

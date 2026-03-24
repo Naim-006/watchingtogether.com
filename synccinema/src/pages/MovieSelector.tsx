@@ -16,6 +16,7 @@ import {
   Zap
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { useAlert } from '../components/AlertProvider';
 
 interface MovieSite {
   name: string;
@@ -101,6 +102,7 @@ export const MovieSelector: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState<'All' | 'Movies' | 'Videos' | 'Search'>('All');
   const [embeddedUrl, setEmbeddedUrl] = useState<string | null>(null);
   const [showEmbed, setShowEmbed] = useState(false);
+  const { showAlert } = useAlert();
 
   const roomId = searchParams.get('roomId');
   const username = searchParams.get('username') || 'Guest';
@@ -127,7 +129,7 @@ export const MovieSelector: React.FC = () => {
 
   const handleUseVideo = (url: string) => {
     if (!roomId) {
-      alert("No Room ID found!");
+      showAlert({ message: 'No Room ID found!', type: 'error' });
       return;
     }
     navigate(`/room/${roomId}?username=${username}&role=${role}&videoUrl=${encodeURIComponent(url)}`);

@@ -4,6 +4,7 @@ import Draggable from 'react-draggable';
 import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff, Users, ChevronDown, ChevronUp, Move } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
+import { useAlert } from './AlertProvider';
 
 interface CallProps {
   roomId: string;
@@ -39,6 +40,7 @@ export const Call = React.forwardRef<CallHandle, CallProps>(({
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(true);
   const [participants, setParticipants] = useState<string[]>([]);
+  const { showAlert } = useAlert();
   const [remoteStreams, setRemoteStreams] = useState<{ [socketId: string]: MediaStream }>({});
   
   const peerConnections = useRef<{ [socketId: string]: RTCPeerConnection }>({});
@@ -203,7 +205,7 @@ export const Call = React.forwardRef<CallHandle, CallProps>(({
       socket.emit('call:join', { roomId });
     } catch (err) {
       console.error('Call media error:', err);
-      alert('Camera/Mic permission denied.');
+      showAlert({ message: 'Camera/Mic permission denied.', type: 'error' });
     }
   };
 
