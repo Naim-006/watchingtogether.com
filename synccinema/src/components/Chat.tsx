@@ -206,7 +206,12 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
   const [mobile, setMobile] = React.useState(() => window.innerWidth < 768);
 
   useEffect(() => {
-    const handler = () => setMobile(window.innerWidth < 768);
+    const handler = () => {
+      const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      const isNarrow = window.innerWidth < 1024; // Accommodate landscape phones
+      setMobile(isTouch && isNarrow);
+    };
+    handler();
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
   }, []);
@@ -969,8 +974,9 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
                     </button>
                     <input
                       value={input}
-                      onFocus={() => {
+                      onFocus={(e) => {
                         if (mobile && isRoomFullscreen) {
+                          e.preventDefault(); // Extra safeguard
                           setShowVirtualKeyboard(true);
                         }
                       }}
@@ -980,6 +986,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
                         setTimeout(() => handleTyping(false), 200);
                       }}
                       inputMode={mobile && isRoomFullscreen ? 'none' : 'text'}
+                      enterKeyHint="send"
                       placeholder={isRecording ? "Recording..." : "Type a message..."}
                       className="flex-1 bg-transparent outline-none text-sm w-full"
                       disabled={isRecording}
