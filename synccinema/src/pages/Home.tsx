@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Film, Plus, Users, ArrowRight, Crown, Clock, Trash2, LogIn } from 'lucide-react';
+import { Film, Plus, Users, ArrowRight, Crown, Clock, Trash2, LogIn, Search } from 'lucide-react';
 import { generateRoomCode, cn } from '../lib/utils';
 import { socket } from '../lib/socket';
 
@@ -12,8 +12,8 @@ interface RoomHistoryItem {
   joinedAt: number;
 }
 
-const CREATED_KEY = 'synccinema_created_rooms';
-const JOINED_KEY = 'synccinema_joined_rooms';
+const CREATED_KEY = 'SyncView_created_rooms';
+const JOINED_KEY = 'SyncView_joined_rooms';
 
 const loadList = (key: string): RoomHistoryItem[] => {
   try {
@@ -25,12 +25,13 @@ const loadList = (key: string): RoomHistoryItem[] => {
 
 export const Home: React.FC = () => {
   const [roomCode, setRoomCode] = useState('');
-  const [username, setUsername] = useState(() => localStorage.getItem('synccinema_username') || '');
+  const [username, setUsername] = useState(() => localStorage.getItem('SyncView_username') || '');
   const [loading, setLoading] = useState(false);
   const [createdRooms, setCreatedRooms] = useState<RoomHistoryItem[]>(() => loadList(CREATED_KEY));
   const [joinedRooms, setJoinedRooms] = useState<RoomHistoryItem[]>(() => loadList(JOINED_KEY));
   const [activeTab, setActiveTab] = useState<'created' | 'joined'>('created');
   const [isConnected, setIsConnected] = useState(socket.connected);
+  const [showChoiceModal, setShowChoiceModal] = useState<{ code: string; username: string } | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -46,7 +47,7 @@ export const Home: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('synccinema_username', username);
+    localStorage.setItem('SyncView_username', username);
   }, [username]);
 
   const handleCreateRoom = () => {
@@ -59,7 +60,7 @@ export const Home: React.FC = () => {
     setCreatedRooms(updated);
     localStorage.setItem(CREATED_KEY, JSON.stringify(updated));
 
-    navigate(`/room/${code}?username=${username}&role=host`);
+    setShowChoiceModal({ code, username });
   };
 
   const handleJoinRoom = (code?: string) => {
@@ -124,7 +125,7 @@ export const Home: React.FC = () => {
           >
             <Film className="w-10 h-10 text-emerald-500" />
           </motion.div>
-          <h1 className="text-6xl font-extrabold tracking-tighter bg-gradient-to-b from-white to-zinc-400 bg-clip-text text-transparent">SyncCinema</h1>
+          <h1 className="text-6xl font-extrabold tracking-tighter bg-gradient-to-b from-white to-zinc-400 bg-clip-text text-transparent">SyncView</h1>
           <p className="text-zinc-400 text-lg">Watch together. Perfectly in sync.</p>
         </div>
 
@@ -296,7 +297,11 @@ export const Home: React.FC = () => {
                           </motion.button>
                           <motion.button
                             whileTap={{ scale: 0.9 }}
-                            onClick={() => removeItem(historyKey, item.roomId, historySetter)}
+                            onClick={() => {
+                              if (confirm('Are you sure you want to remove this room from your history?')) {
+                                removeItem(historyKey, item.roomId, historySetter);
+                              }
+                            }}
                             className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors"
                             title="Remove"
                           >
@@ -361,6 +366,69 @@ export const Home: React.FC = () => {
           </div>
         </motion.div>
       </motion.div>
+
+      {/* Choice Modal */}
+      <AnimatePresence>
+        {showChoiceModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-zinc-900 border border-white/10 rounded-[32px] p-8 max-w-md w-full shadow-2xl space-y-8"
+            >
+              <div className="text-center space-y-4">
+                <div className="w-16 h-16 bg-emerald-500/10 rounded-2xl flex items-center justify-center mx-auto border border-emerald-500/20">
+                  <Film className="w-8 h-8 text-emerald-500" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-2xl font-bold">Room Created!</h3>
+                  <p className="text-zinc-500 text-sm">How would you like to start your session?</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => navigate(`/room/${showChoiceModal.code}?username=${showChoiceModal.username}&role=host`)}
+                  className="w-full flex items-center gap-4 p-5 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/5 transition-all group"
+                >
+                  <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center group-hover:bg-emerald-500/10 transition-colors">
+                    <ArrowRight className="w-6 h-6 text-zinc-400 group-hover:text-emerald-500" />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-bold text-lg">Enter Room</p>
+                    <p className="text-xs text-zinc-500">Go directly to the watch room.</p>
+                  </div>
+                </motion.button>
+
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => navigate(`/select-video?roomId=${showChoiceModal.code}&username=${showChoiceModal.username}&role=host`)}
+                  className="w-full flex items-center gap-4 p-5 bg-emerald-600 hover:bg-emerald-500 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 group"
+                >
+                  <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                    <Search className="w-6 h-6 text-white" />
+                  </div>
+                  <div className="text-left">
+                    <p className="font-bold text-lg text-white">Select Movies</p>
+                    <p className="text-xs text-emerald-100/60">Find some content to watch first.</p>
+                  </div>
+                </motion.button>
+              </div>
+
+              <button 
+                onClick={() => setShowChoiceModal(null)}
+                className="w-full text-zinc-500 text-xs font-bold uppercase tracking-widest hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

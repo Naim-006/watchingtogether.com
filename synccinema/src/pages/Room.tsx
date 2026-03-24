@@ -19,7 +19,9 @@ import {
   Clock,
   PlayCircle,
   Menu,
-  Phone
+  Phone,
+  Search,
+  UserMinus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
@@ -73,7 +75,7 @@ export const Room: React.FC = () => {
   const [participantsCount, setParticipantsCount] = useState(0);
   const callRef = useRef<CallHandle>(null);
   const videoFileRef = useRef<HTMLInputElement>(null);
-  
+
   const fullscreenContainerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -85,9 +87,9 @@ export const Room: React.FC = () => {
       // Auto-orientation for mobile
       if (window.innerWidth < 768 && (window as any).screen?.orientation?.lock) {
         if (isFS) {
-          (window as any).screen.orientation.lock('landscape').catch(() => {});
+          (window as any).screen.orientation.lock('landscape').catch(() => { });
         } else {
-          (window as any).screen.orientation.lock('portrait').catch(() => {});
+          (window as any).screen.orientation.lock('portrait').catch(() => { });
           // Unlock after a brief delay to allow user freedom
           setTimeout(() => {
             (window as any).screen.orientation.unlock?.();
@@ -137,6 +139,11 @@ export const Room: React.FC = () => {
     socket.on('room:update', (data) => {
       if (data.isLocked !== undefined) setIsLocked(data.isLocked);
       if (data.members) setMembers(data.members);
+    });
+
+    socket.on('room:kicked', ({ message }) => {
+      alert(message || 'You have been kicked from the room.');
+      window.location.href = '/';
     });
 
     const fetchHistory = async () => {
@@ -189,7 +196,7 @@ export const Room: React.FC = () => {
     if (roomId) {
       try {
         const metadata = await getVideoMetadata(url, videoType);
-        
+
         const { error } = await supabase.from('room_videos').insert({
           room_id: roomId,
           video_type: videoType,
@@ -219,6 +226,17 @@ export const Room: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    const videoUrlParam = searchParams.get('videoUrl');
+    if (videoUrlParam && userRole === 'host') {
+      // Small delay to ensure socket is connected and room joined
+      const timer = setTimeout(() => {
+        syncNewVideo(decodeURIComponent(videoUrlParam));
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams, userRole]);
+
   const handleSetVideo = (e: React.FormEvent) => {
     e.preventDefault();
     if (!videoInput.trim()) return;
@@ -247,6 +265,13 @@ export const Room: React.FC = () => {
   const handleTransferHost = (targetUserId: string) => {
     if (userRole !== 'host') return;
     socket.emit('room:transfer_host', { roomId, targetUserId });
+  };
+
+  const handleKickMember = (targetUserId: string) => {
+    if (userRole !== 'host') return;
+    if (confirm('Are you sure you want to kick this member?')) {
+      socket.emit('room:kick', { roomId, targetUserId });
+    }
   };
 
   const toggleLock = async () => {
@@ -346,9 +371,12 @@ export const Room: React.FC = () => {
                     </div>
                   </div>
                   {userRole === 'host' && m.userId !== userId && (
-                    <button onClick={() => handleTransferHost(m.userId)} className="p-1.5 opacity-0 group-hover:opacity-100 hover:bg-emerald-500/10 hover:text-emerald-500 rounded-lg transition-all" title="Transfer Host">
-                      <Settings className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+
+                      <button onClick={() => handleKickMember(m.userId)} className="p-1.5 hover:bg-red-500/10 hover:text-red-500 rounded-lg transition-all" title="Kick Member">
+                        <UserMinus className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   )}
                 </div>
               ))}
@@ -388,6 +416,14 @@ export const Room: React.FC = () => {
                   onChange={handleVideoUpload}
                 />
               </div>
+              <button
+                type="button"
+                onClick={() => navigate(`/select-video?roomId=${roomId}&username=${username}&role=${userRole}`)}
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600/10 hover:bg-blue-600/20 border border-blue-500/20 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all text-blue-400 group"
+              >
+                <Search className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
+                Browse Movies & Videos
+              </button>
             </form>
           </div>
 
@@ -417,9 +453,9 @@ export const Room: React.FC = () => {
                     >
                       {/* Thumbnail */}
                       <div className="relative w-32 h-full rounded-xl overflow-hidden bg-zinc-900 shrink-0 border border-white/5">
-                        <img 
-                          src={displayThumbnail} 
-                          alt={displayTitle} 
+                        <img
+                          src={displayThumbnail}
+                          alt={displayTitle}
                           className="w-full h-full object-cover transition-transform group-hover:scale-110 duration-500"
                         />
                         <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -433,17 +469,17 @@ export const Room: React.FC = () => {
                       {/* Content */}
                       <div className="flex flex-col justify-between py-1 min-w-0">
                         <div className="space-y-1">
-                           <h4 className="text-[11px] font-bold text-zinc-200 line-clamp-2 leading-tight group-hover:text-emerald-400 transition-colors">
-                             {displayTitle}
-                           </h4>
-                           <div className="flex items-center gap-1">
-                              <div className="w-3 h-3 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                              </div>
-                              <span className="text-[9px] text-zinc-500 font-bold truncate">
-                                {video.users?.username || 'Guest'}
-                              </span>
-                           </div>
+                          <h4 className="text-[11px] font-bold text-zinc-200 line-clamp-2 leading-tight group-hover:text-emerald-400 transition-colors">
+                            {displayTitle}
+                          </h4>
+                          <div className="flex items-center gap-1">
+                            <div className="w-3 h-3 rounded-full bg-emerald-500/20 flex items-center justify-center">
+                              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            </div>
+                            <span className="text-[9px] text-zinc-500 font-bold truncate">
+                              {video.users?.username || 'Guest'}
+                            </span>
+                          </div>
                         </div>
                         <div className="text-[8px] text-zinc-600 font-black uppercase tracking-wider">
                           {new Date(video.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -481,22 +517,22 @@ export const Room: React.FC = () => {
           <div className="space-y-5">
             <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Voice & Video Call</h3>
             <div className="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-3">
-               <button 
-                 onClick={() => callRef.current?.startCall()}
-                 className="w-full flex items-center justify-between p-3.5 bg-emerald-600 hover:bg-emerald-500 rounded-xl transition-all shadow-lg shadow-emerald-600/20 group animate-in fade-in slide-in-from-bottom-2"
-               >
-                 <div className="flex items-center gap-3">
-                   <Phone className="w-5 h-5 group-hover:rotate-12 transition-transform" />
-                   <span className="text-xs font-black uppercase tracking-widest text-white">
-                     {participantsCount > 0 ? 'Join Active Call' : 'Start Room Call'}
-                   </span>
-                 </div>
-                 {participantsCount > 0 && (
-                   <span className="bg-white/20 px-2.5 py-1 rounded-lg text-[10px] font-black text-white">
-                     {participantsCount}
-                   </span>
-                 )}
-               </button>
+              <button
+                onClick={() => callRef.current?.startCall()}
+                className="w-full flex items-center justify-between p-3.5 bg-emerald-600 hover:bg-emerald-500 rounded-xl transition-all shadow-lg shadow-emerald-600/20 group animate-in fade-in slide-in-from-bottom-2"
+              >
+                <div className="flex items-center gap-3">
+                  <Phone className="w-5 h-5 group-hover:rotate-12 transition-transform" />
+                  <span className="text-xs font-black uppercase tracking-widest text-white">
+                    {participantsCount > 0 ? 'Join Active Call' : 'Start Room Call'}
+                  </span>
+                </div>
+                {participantsCount > 0 && (
+                  <span className="bg-white/20 px-2.5 py-1 rounded-lg text-[10px] font-black text-white">
+                    {participantsCount}
+                  </span>
+                )}
+              </button>
             </div>
           </div>
         </aside>
@@ -543,11 +579,11 @@ export const Room: React.FC = () => {
         </section>
       </main>
 
-      <Call 
+      <Call
         ref={callRef}
-        roomId={roomId || ''} 
-        userId={userId} 
-        username={username} 
+        roomId={roomId || ''}
+        userId={userId}
+        username={username}
         members={members}
         showFloatingTrigger={false}
         onParticipantsChange={setParticipantsCount}

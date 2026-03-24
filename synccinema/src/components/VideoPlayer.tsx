@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactPlayer from 'react-player';
 import { socket } from '../lib/socket';
-import { Play, Pause, RotateCcw, RotateCw, Volume2, VolumeX, Maximize } from 'lucide-react';
+import { Play, Pause, RotateCcw, RotateCw, Volume2, VolumeX, Maximize, FastForward, Rewind } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 
 interface VideoPlayerProps {
@@ -17,7 +18,6 @@ const Player = (ReactPlayer as any).default || ReactPlayer;
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, isHost, roomId, userId, onToggleFullscreen }) => {
   const playerRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const lastTapRef = useRef<{ time: number; side: string }>({ time: 0, side: '' });
   const [playing, setPlaying] = useState(false);
   const [volume, setVolume] = useState(0.8);
   const [muted, setMuted] = useState(false);
@@ -26,6 +26,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, isHost, roomId, u
   const [playbackRate, setPlaybackRate] = useState(1);
   const [isReady, setIsReady] = useState(false);
   const [showControls, setShowControls] = useState(true);
+  const [showSkipIndicator, setShowSkipIndicator] = useState<{ side: 'left' | 'right', amount: number } | null>(null);
+  const clickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const revealControls = () => {
@@ -103,11 +105,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, isHost, roomId, u
     };
   }, [isHost, playing, roomId]);
 
-  const handlePlayPause = () => {
+  const handlePlayPause = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
     const newPlaying = !playing;
     setPlaying(newPlaying);
     const currentTime = playerRef.current?.getCurrentTime() || 0;
     socket.emit('video:action', { roomId, userId, action: newPlaying ? 'play' : 'pause', currentTime });
+  };
+
+  const handleSeekInternal = (amount: number) => {
+    handleSkip(amount);
+    setShowSkipIndicator({ side: amount > 0 ? 'right' : 'left', amount: Math.abs(amount) });
+    setTimeout(() => setShowSkipIndicator(null), 800);
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -148,15 +157,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, isHost, roomId, u
     }
   };
 
-  const handleMobileTap = (e: React.MouseEvent, side: string) => {
-    const now = Date.now();
-    const DOUBLE_TAP_DELAY = 300;
-
-    if (lastTapRef.current.side === side && now - lastTapRef.current.time < DOUBLE_TAP_DELAY) {
-      handleSkip(side === 'left' ? -10 : 10);
-      lastTapRef.current = { time: 0, side: '' };
+  const handleDesktopClick = (e: React.MouseEvent, side: 'left' | 'right' | 'center') => {
+    if (clickTimeoutRef.current) {
+      // Double tap detected
+      clearTimeout(clickTimeoutRef.current);
+      clickTimeoutRef.current = null;
+      if (side === 'left') handleSeekInternal(-10);
+      if (side === 'right') handleSeekInternal(10);
+      if (side === 'center') handlePlayPause(); // Center double-tap still toggles or does something else? Usually toggle.
     } else {
-      lastTapRef.current = { time: now, side };
+      // Single tap potential
+      clickTimeoutRef.current = setTimeout(() => {
+        handlePlayPause();
+        clickTimeoutRef.current = null;
+      }, 250);
     }
   };
 
@@ -201,19 +215,31 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, isHost, roomId, u
       />
 
       {/* Gesture Overlays for Click and Double-Tap */}
-      {/* Desktop: click to play/pause */}
-      <div className="absolute inset-x-0 top-0 bottom-20 z-10 hidden md:flex">
-        <div className="flex-1" onDoubleClick={() => handleSkip(-10)} onClick={handlePlayPause} />
-        <div className="w-1/4" onClick={handlePlayPause} />
-        <div className="flex-1" onDoubleClick={() => handleSkip(10)} onClick={handlePlayPause} />
+      <div className="absolute inset-x-0 top-0 bottom-20 z-10 flex">
+        <div className="flex-1 cursor-pointer" onClick={(e) => handleDesktopClick(e, 'left')} />
+        <div className="w-1/4 cursor-pointer" onClick={(e) => handleDesktopClick(e, 'center')} />
+        <div className="flex-1 cursor-pointer" onClick={(e) => handleDesktopClick(e, 'right')} />
       </div>
 
-      {/* Mobile: custom double-tap tracking for reliable mobile execution */}
-      <div className="absolute inset-x-0 top-0 bottom-20 z-10 flex md:hidden touch-manipulation">
-        <div className="flex-1" onClick={(e) => handleMobileTap(e, 'left')} />
-        <div className="w-1/4" />
-        <div className="flex-1" onClick={(e) => handleMobileTap(e, 'right')} />
-      </div>
+      {/* Skip Indicators */}
+      <AnimatePresence>
+        {showSkipIndicator && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.5 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 1.5 }}
+            className={cn(
+              "absolute top-1/2 -translate-y-1/2 z-30 flex flex-col items-center gap-2 pointer-events-none",
+              showSkipIndicator.side === 'left' ? "left-[10%] md:left-[20%]" : "right-[10%] md:right-[20%]"
+            )}
+          >
+            <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center">
+              {showSkipIndicator.side === 'left' ? <Rewind size={32} className="text-white fill-current" /> : <FastForward size={32} className="text-white fill-current" />}
+            </div>
+            <span className="text-white font-bold text-lg">{showSkipIndicator.amount}s</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Center Play/Pause Button for Mobile */}
       <div className={cn(

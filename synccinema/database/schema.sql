@@ -1,4 +1,4 @@
--- SyncCinema Database Schema
+-- SyncView Database Schema
 
 -- Users table (extends Supabase Auth users or custom IDs)
 CREATE TABLE IF NOT EXISTS public.users (
@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS public.messages (
     file_url TEXT,
     reply_to TEXT REFERENCES public.messages(id),
     seen_by JSONB DEFAULT '[]'::jsonb,
+    reactions JSONB DEFAULT '{}'::jsonb,
+    is_edited BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Draggable from 'react-draggable';
 import { socket } from '../lib/socket';
-import { Send, Image as ImageIcon, Mic, X, MessageSquare, Check, CheckCheck, Maximize2, Minimize2, GripVertical, Smile, Edit2, Trash2, Play, Pause, MoreVertical } from 'lucide-react';
+import { Send, Image as ImageIcon, Mic, X, MessageSquare, Check, CheckCheck, Maximize2, Minimize2, GripVertical, Smile, Edit2, Trash2, Play, Pause, MoreVertical, RotateCcw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
@@ -95,6 +95,7 @@ interface Message {
   seenBy?: string[];
   reactions?: Record<string, string[]>;
   isEdited?: boolean;
+  isDeleted?: boolean;
   tempId?: string;
 }
 
@@ -324,7 +325,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
     const fetchHistory = async () => {
       const { data, error } = await supabase
         .from('messages')
-        .select('*')
+        .select('*, users(username, avatar_url)')
         .eq('room_id', roomId)
         .order('created_at', { ascending: true });
 
@@ -334,9 +335,9 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
       }
 
       if (data) {
-        const history = data.map((d: any) => {
+        const history = (data as any[]).map((d: any) => {
           // Find the reply relative to the full history
-          const replyRef = data.find((m: any) => m.id === d.reply_to);
+          const replyRef = (data as any[]).find((m: any) => m.id === d.reply_to);
           return {
             id: d.id,
             senderId: d.sender_id,
@@ -347,12 +348,13 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
             timestamp: new Date(d.created_at).getTime(),
             replyTo: replyRef ? {
               id: replyRef.id,
-              username: replyRef.username,
-              content: replyRef.content.substring(0, 50) + (replyRef.content.length > 50 ? '...' : '')
+              username: replyRef.username || 'User',
+              content: (replyRef.content || '').substring(0, 50) + ((replyRef.content || '').length > 50 ? '...' : '')
             } : undefined,
             seenBy: d.seen_by || [],
             reactions: d.reactions || {},
-            isEdited: d.is_edited || false
+            isEdited: d.is_edited || false,
+            isDeleted: d.content?.trim() === "This message was deleted"
           };
         });
         setMessages(history);
@@ -408,8 +410,10 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
       setMessages(prev => prev.map(m => m.id === messageId ? { ...m, content: newContent, isEdited } : m));
     });
 
-    socket.on('chat:delete_update', ({ messageId }) => {
-      setMessages(prev => prev.filter(m => m.id !== messageId));
+    socket.on('chat:delete_update', ({ messageId, content, isDeleted }) => {
+      setMessages(prev => prev.map(m => 
+        m.id === messageId ? { ...m, content, isDeleted, type: 'text', fileUrl: undefined } : m
+      ));
     });
 
     socket.on('chat:seen_update', ({ messageId, seenBy }) => {
@@ -485,7 +489,6 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
 
     try {
       setIsUploading(true);
-      const { uploadToCloudinary } = await import('../lib/cloudinary');
       const url = await uploadToCloudinary(file, 'image');
 
       const message: Message = {
@@ -522,7 +525,6 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
 
         try {
           setIsUploading(true);
-          const { uploadToCloudinary } = await import('../lib/cloudinary');
           const url = await uploadToCloudinary(audioBlob, 'video'); // Cloudinary treats audio as video resource-type usually or auto
 
           const message: Message = {
@@ -612,6 +614,9 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
 
     const [showReactions, setShowReactions] = useState(false);
     const [showActions, setShowActions] = useState(false);
+    const [swipeX, setSwipeX] = useState(0);
+    const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lastClickTime = useRef<number>(0);
 
     const handlePressEnd = () => {
       // Logic removed to favor visible menu button
@@ -634,11 +639,54 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
       };
     }, [showActions, showReactions]);
 
-    const toggleActions = (e: React.MouseEvent) => {
-      e.stopPropagation();
-      e.preventDefault();
+    const toggleActions = (e?: React.MouseEvent | React.TouchEvent) => {
+      e?.stopPropagation();
+      e?.preventDefault();
       setShowReactions(false);
       setShowActions(prev => !prev);
+    };
+
+    if (msg.isDeleted) {
+      return (
+        <div ref={itemRef} className={cn("flex flex-col max-w-[90%] group relative select-none mb-1", msg.senderId === userId ? "ml-auto items-end" : "items-start")}>
+          <div className="flex items-center gap-2 mb-1 px-1">
+            <span className="text-[10px] opacity-40">{msg.username} • {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+          </div>
+          <div className={cn("px-3 py-2 rounded-2xl text-[11px] text-white/30 italic border border-white/5 bg-white/5", msg.senderId === userId ? "rounded-tr-none" : "rounded-tl-none")}>
+            This message was deleted
+          </div>
+        </div>
+      );
+    }
+
+    const handleTouchStart = () => {
+      longPressTimer.current = setTimeout(() => {
+        toggleActions();
+        if (navigator.vibrate) navigator.vibrate(50);
+      }, 500);
+    };
+
+    const handleTouchEnd = () => {
+      if (longPressTimer.current) {
+        clearTimeout(longPressTimer.current);
+        longPressTimer.current = null;
+      }
+    };
+
+    const handleDoubleClick = (e: React.MouseEvent | React.TouchEvent) => {
+      e.stopPropagation();
+      handleReact('❤️');
+      if (navigator.vibrate) navigator.vibrate([30, 30]);
+    };
+
+    const handleClick = (e: React.MouseEvent | React.TouchEvent) => {
+      const now = Date.now();
+      if (now - lastClickTime.current < 300) {
+        handleDoubleClick(e);
+        lastClickTime.current = 0;
+      } else {
+        lastClickTime.current = now;
+      }
     };
 
     return (
@@ -648,7 +696,6 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
           "flex flex-col max-w-[90%] group relative select-none",
           msg.senderId === userId ? "ml-auto items-end" : "items-start"
         )}
-        onDoubleClick={() => setReplyTo(msg)}
       >
         <div className="flex items-center gap-2 mb-1 px-1">
           <span className="text-[10px] opacity-40">{msg.username} • {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
@@ -662,127 +709,170 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFull
         )}
 
         <div className="relative group/bubble flex items-center min-h-[32px]">
-          {/* Action Menu Button (Absolutely positioned to prevent layout shifts) */}
-          <button
-            onClick={toggleActions}
-            onMouseDown={(e) => e.stopPropagation()} 
-            className={cn(
-              "absolute top-1/2 -translate-y-1/2 p-2 opacity-0 group-hover/bubble:opacity-100 transition-all hover:bg-white/10 rounded-full z-10",
-              msg.senderId === userId ? "-left-10" : "-right-10"
-            )}
+          {/* Reply Icon (visible during swipe) */}
+          <div 
+            className="absolute left-0 top-1/2 -translate-y-1/2 flex items-center justify-center transition-opacity"
+            style={{ opacity: Math.min(1, swipeX / 60), transform: `translateX(${Math.min(0, (swipeX - 40))}px)` }}
           >
-            <MoreVertical className="w-4 h-4 text-zinc-400 hover:text-white transition-colors" />
-          </button>
-
-          <div className="relative flex-1">
-            <AnimatePresence>
-              {showActions && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  className={cn(
-                    "no-drag absolute -top-12 z-[100] bg-zinc-900 border border-white/15 rounded-2xl p-1.5 flex items-center gap-1.5 shadow-2xl backdrop-blur-xl",
-                    msg.senderId === userId ? "right-0" : "left-0"
-                  )}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <button
-                    onClick={() => { setShowReactions(true); setShowActions(false); }}
-                    className="p-2 hover:bg-white/10 rounded-xl text-zinc-300 hover:text-white transition-colors flex items-center gap-2"
-                    title="React"
-                  >
-                    <Smile className="w-4 h-4" />
-                  </button>
-                  {msg.senderId === userId && (
-                    <>
-                      <button
-                        onClick={() => { startEdit(); setShowActions(false); }}
-                        className="p-2 hover:bg-white/10 rounded-xl text-zinc-300 hover:text-white transition-colors"
-                        title="Edit"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => { handleDelete(); setShowActions(false); }}
-                        className="p-2 hover:bg-white/10 rounded-xl text-zinc-300 hover:text-red-500 transition-colors"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <AnimatePresence>
-              {showReactions && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.9, y: 10 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.9, y: 10 }}
-                  className={cn(
-                    "no-drag absolute -top-12 z-[80] bg-zinc-900 border border-white/10 rounded-full px-2 py-1 flex gap-2 shadow-2xl backdrop-blur-xl",
-                    msg.senderId === userId ? "right-0" : "left-0"
-                  )}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {['❤️', '😂', '😮', '😢', '🔥', '👍'].map(emoji => (
-                    <button
-                      key={emoji}
-                      onClick={(e) => { e.stopPropagation(); handleReact(emoji); }}
-                      className="hover:scale-125 transition-transform text-xs p-1"
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <div className={cn(
-              "px-3 py-2 rounded-2xl text-sm overflow-hidden backdrop-blur-sm shadow-sm transition-transform active:scale-[0.98]",
-              msg.senderId === userId
-                ? "bg-emerald-600/80 text-white rounded-tr-none"
-                : "bg-white/10 text-white rounded-tl-none border border-white/5"
-            )}>
-              {editingMessageId === msg.id ? (
-                <form onSubmit={saveEdit} className="no-drag flex flex-col gap-2 min-w-[200px] py-1">
-                  <textarea
-                    value={editContent}
-                    onChange={(e) => setEditContent(e.target.value)}
-                    className="bg-black/40 border border-white/10 rounded-xl p-2.5 text-xs outline-none focus:border-emerald-500/50 resize-none text-white w-full"
-                    rows={2}
-                    autoFocus
-                  />
-                  <div className="flex justify-end gap-3 px-1">
-                    <button type="button" onClick={() => setEditingMessageId(null)} className="text-[10px] font-bold text-zinc-500 hover:text-zinc-300 transition-colors">Cancel</button>
-                    <button type="submit" className="text-[10px] text-emerald-500 font-black uppercase tracking-widest hover:text-emerald-400 transition-colors">Save Changes</button>
-                  </div>
-                </form>
-              ) : msg.type === 'image' ? (
-                <img
-                  src={msg.fileUrl}
-                  alt="Shared"
-                  className="max-w-full rounded-lg cursor-zoom-in hover:opacity-90 transition-opacity"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setFullscreenImage(msg.fileUrl!);
-                  }}
-                />
-              ) : msg.type === 'voice' ? (
-                <VoiceMessage url={msg.fileUrl!} />
-              ) : (
-                msg.content
-              )}
+            <div className="bg-emerald-500/20 p-1.5 rounded-full border border-emerald-500/20 text-emerald-500">
+               <RotateCcw className="w-4 h-4 -scale-x-100" />
             </div>
           </div>
+
+          <motion.div 
+            drag="x"
+            dragConstraints={{ left: 0, right: 100 }}
+            dragElastic={0.2}
+            onDrag={(e, info) => setSwipeX(info.offset.x)}
+            onDragEnd={(e, info) => {
+              if (info.offset.x > 60) {
+                setReplyTo(msg);
+                if (navigator.vibrate) navigator.vibrate(30);
+              }
+              setSwipeX(0);
+            }}
+            className="relative"
+            style={{ x: swipeX }}
+          >
+            {/* Action Menu Button (Desktop) */}
+            <button
+              onClick={toggleActions}
+              onMouseDown={(e) => e.stopPropagation()} 
+              className={cn(
+                "absolute top-1/2 -translate-y-1/2 p-2 opacity-0 group-hover/bubble:opacity-100 transition-all hover:bg-white/10 rounded-full z-10 hidden md:block",
+                msg.senderId === userId ? "-left-10" : "-right-10"
+              )}
+            >
+              <MoreVertical className="w-4 h-4 text-zinc-400 hover:text-white transition-colors" />
+            </button>
+
+            <div className="relative">
+              <AnimatePresence mode="wait">
+                {showActions && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                    className={cn(
+                      "no-drag absolute -top-14 z-[100] bg-zinc-900 border border-white/15 rounded-2xl p-1.5 flex items-center gap-1.5 shadow-2xl backdrop-blur-xl",
+                      msg.senderId === userId ? "right-0" : "left-0"
+                    )}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      onClick={() => { setShowReactions(true); setShowActions(false); }}
+                      className="p-2.5 hover:bg-white/10 rounded-xl text-zinc-300 hover:text-white transition-colors flex items-center gap-2"
+                      title="React"
+                    >
+                      <Smile className="w-4 h-4" />
+                    </button>
+                    {msg.senderId === userId && (
+                      <>
+                        <button
+                          onClick={() => { startEdit(); setShowActions(false); }}
+                          className="p-2.5 hover:bg-white/10 rounded-xl text-zinc-300 hover:text-white transition-colors"
+                          title="Edit"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => { handleDelete(); setShowActions(false); }}
+                          className="p-2.5 hover:bg-white/10 rounded-xl text-zinc-300 hover:text-red-500 transition-colors"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <AnimatePresence>
+                {showReactions && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                    className={cn(
+                      "no-drag absolute -top-14 z-[80] bg-zinc-900 border border-white/10 rounded-full px-2 py-1 flex gap-2 shadow-2xl backdrop-blur-xl",
+                      msg.senderId === userId ? "right-0" : "left-0"
+                    )}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {['❤️', '😂', '😮', '😢', '🔥', '👍'].map(emoji => (
+                      <button
+                        key={emoji}
+                        onClick={(e) => { e.stopPropagation(); handleReact(emoji); }}
+                        className="hover:scale-125 transition-transform text-xs p-1.5"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div 
+                onMouseDown={handleTouchStart}
+                onMouseUp={handleTouchEnd}
+                onMouseLeave={handleTouchEnd}
+                onTouchStart={handleTouchStart}
+                onTouchEnd={handleTouchEnd}
+                onClick={handleClick}
+                className={cn(
+                  "px-3 py-2 rounded-2xl text-sm overflow-hidden backdrop-blur-sm shadow-sm transition-all active:scale-[0.98] cursor-pointer touch-manipulation",
+                  msg.senderId === userId
+                    ? "bg-emerald-600/80 text-white rounded-tr-none"
+                    : "bg-white/10 text-white rounded-tl-none border border-white/5"
+                )}
+              >
+                {editingMessageId === msg.id ? (
+                  <form onSubmit={saveEdit} className="no-drag flex flex-col gap-2 min-w-[200px] py-1">
+                    <textarea
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                      className="bg-black/40 border border-white/10 rounded-xl p-3 text-xs outline-none focus:border-emerald-500/50 resize-none text-white w-full"
+                      rows={2}
+                      autoFocus
+                    />
+                    <div className="flex justify-end gap-3 px-1">
+                      <button type="button" onClick={() => setEditingMessageId(null)} className="text-[10px] font-bold text-zinc-500 hover:text-zinc-300 transition-colors">Cancel</button>
+                      <button type="submit" className="text-[10px] text-emerald-500 font-black uppercase tracking-widest hover:text-emerald-400 transition-colors">Save Changes</button>
+                    </div>
+                  </form>
+                ) : msg.type === 'image' ? (
+                  <img
+                    src={msg.fileUrl}
+                    alt="Shared"
+                    className="max-w-full rounded-lg cursor-zoom-in hover:opacity-90 transition-opacity"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFullscreenImage(msg.fileUrl!);
+                    }}
+                  />
+                ) : msg.type === 'voice' ? (
+                  <VoiceMessage url={msg.fileUrl!} />
+                ) : (
+                  msg.content
+                )}
+              </div>
+              
+              {msg.isDeleted && (
+                <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] rounded-2xl flex items-center px-3">
+                  <span className="text-[10px] text-white/40 italic font-medium flex items-center gap-1.5 ring-1 ring-white/5 py-1 px-2 rounded-full">
+                    <Trash2 className="w-2.5 h-2.5 opacity-40" />
+                    This message was deleted
+                  </span>
+                </div>
+              )}
+            </div>
+          </motion.div>
         </div>
 
         {msg.reactions && Object.keys(msg.reactions).length > 0 && (
           <div className="flex flex-wrap gap-1 px-1 -mt-1.5 z-10 relative">
-            {Object.entries(msg.reactions).map(([emoji, users]) => (
+            {(Object.entries(msg.reactions) as [string, string[]][]).map(([emoji, users]) => (
               <button
                 key={emoji}
                 onClick={(e) => { e.stopPropagation(); handleReact(emoji); }}
