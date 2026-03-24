@@ -1,12 +1,83 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Draggable from 'react-draggable';
 import { socket } from '../lib/socket';
-import { Send, Image as ImageIcon, Mic, X, MessageSquare, Check, CheckCheck, Maximize2, Minimize2, GripVertical, Smile, Edit2, Trash2 } from 'lucide-react';
+import { Send, Image as ImageIcon, Mic, X, MessageSquare, Check, CheckCheck, Maximize2, Minimize2, GripVertical, Smile, Edit2, Trash2, Play, Pause } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { supabase } from '../lib/supabase';
-
 import { uploadToCloudinary } from '../lib/cloudinary';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import EmojiPicker, { Theme } from 'emoji-picker-react';
+import debounce from 'lodash/debounce';
+
+const VoiceMessage = ({ url }: { url: string }) => {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const audioRef = useRef<HTMLAudioElement>(null);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const onTimeUpdate = () => setProgress(audio.duration ? (audio.currentTime / audio.duration) * 100 : 0);
+    const onEnded = () => { setIsPlaying(false); setProgress(0); };
+    const onLoadedMetadata = () => setDuration(audio.duration);
+
+    audio.addEventListener('timeupdate', onTimeUpdate);
+    audio.addEventListener('ended', onEnded);
+    audio.addEventListener('loadedmetadata', onLoadedMetadata);
+
+    return () => {
+      audio.removeEventListener('timeupdate', onTimeUpdate);
+      audio.removeEventListener('ended', onEnded);
+      audio.removeEventListener('loadedmetadata', onLoadedMetadata);
+    };
+  }, []);
+
+  const togglePlay = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (audioRef.current) {
+      if (isPlaying) audioRef.current.pause();
+      else audioRef.current.play();
+      setIsPlaying(!isPlaying);
+    }
+  };
+
+  const formatDuration = (secs: number) => {
+    if (!secs || isNaN(secs)) return '0:00';
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const currentT = audioRef.current?.currentTime || 0;
+
+  return (
+    <div className="flex items-center gap-3 bg-black/20 rounded-full py-2 px-3 min-w-[180px]">
+      <button onClick={togglePlay} className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-md hover:scale-105 transition-transform shrink-0">
+        {isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current ml-0.5" />}
+      </button>
+      <div className="flex-1 flex flex-col gap-1 justify-center">
+        <div className="h-1.5 bg-black/40 rounded-full overflow-hidden relative cursor-pointer group" onClick={(e) => {
+          e.stopPropagation();
+          if (!audioRef.current || !duration) return;
+          const rect = e.currentTarget.getBoundingClientRect();
+          const p = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+          audioRef.current.currentTime = p * duration;
+          setProgress(p * 100);
+        }}>
+          <div className="absolute top-0 left-0 h-full bg-emerald-500 rounded-full transition-all group-hover:bg-emerald-400" style={{ width: `${progress}%` }} />
+        </div>
+        <div className="text-[10px] opacity-70 font-mono flex justify-between tracking-tight">
+          <span>{formatDuration(currentT)}</span>
+          <span>{formatDuration(duration)}</span>
+        </div>
+      </div>
+      <audio ref={audioRef} src={url} preload="metadata" className="hidden" />
+    </div>
+  );
+};
 
 interface Message {
   id: string;
@@ -31,9 +102,10 @@ interface ChatProps {
   roomId: string;
   userId: string;
   username: string;
+  isRoomFullscreen?: boolean;
 }
 
-export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
+export const Chat: React.FC<ChatProps> = ({ roomId, userId, username, isRoomFullscreen }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isOpen, setIsOpen] = useState(false);
@@ -50,9 +122,11 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const isMobile = () => window.innerWidth < 768;
   const [mobile, setMobile] = React.useState(() => window.innerWidth < 768);
-  
+
   useEffect(() => {
     const handler = () => setMobile(window.innerWidth < 768);
     window.addEventListener('resize', handler);
@@ -76,29 +150,39 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
   useEffect(() => {
     const vv = (window as any).visualViewport;
     if (!vv) return;
-    const handler = () => {
+    const handler = debounce(() => {
       const offset = window.innerHeight - vv.height - vv.offsetTop;
       setKeyboardOffset(Math.max(0, offset));
-    };
+    }, 100);
     vv.addEventListener('resize', handler);
     vv.addEventListener('scroll', handler);
-    return () => { vv.removeEventListener('resize', handler); vv.removeEventListener('scroll', handler); };
+    return () => {
+      vv.removeEventListener('resize', handler);
+      vv.removeEventListener('scroll', handler);
+      handler.cancel();
+    };
   }, []);
 
   // Resize handle logic
   const startResize = useCallback((e: React.MouseEvent | React.TouchEvent, direction: string) => {
-    e.preventDefault();
     e.stopPropagation();
-    
-    // Don't allow resize on mobile
-    if (mobile) return;
-    
+
+    if (isRoomFullscreen) {
+      if (direction !== 'w') return;
+    } else {
+      // Allow only north ('n') resize on mobile to act as a bottom sheet puller
+      if (mobile && direction !== 'n') return;
+    }
+
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
     resizeStartRef.current = { x: clientX, y: clientY, w: chatSize.w, h: chatSize.h };
 
     const onMove = (ev: MouseEvent | TouchEvent) => {
       if (!resizeStartRef.current) return;
+      // Prevent browser scroll takeover during active drag
+      if ('touches' in ev && ev.cancelable) ev.preventDefault();
+      
       const cx = 'touches' in ev ? ev.touches[0].clientX : ev.clientX;
       const cy = 'touches' in ev ? ev.touches[0].clientY : ev.clientY;
       const r = resizeStartRef.current;
@@ -108,15 +192,14 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
       let newW = r.w;
       let newH = r.h;
 
-      // Directions: n, s, e, w
       if (direction.includes('e')) newW = r.w + dx;
       if (direction.includes('w')) newW = r.w - dx;
       if (direction.includes('s')) newH = r.h + dy;
       if (direction.includes('n')) newH = r.h - dy;
 
       setChatSize({
-        w: Math.max(280, Math.min(800, newW)),
-        h: Math.max(300, Math.min(window.innerHeight * 0.9, newH))
+        w: Math.max(280, Math.min(mobile || isRoomFullscreen ? window.innerWidth * 0.8 : 800, newW)),
+        h: Math.max(300, Math.min(mobile ? window.innerHeight - 50 : window.innerHeight * 0.9, newH))
       });
     };
     const onUp = () => {
@@ -196,10 +279,10 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
             return newMessages;
           }
         }
-        
+
         // Final check to avoid duplicates by UUID
         if (prev.some(m => m.id === msg.id)) return prev;
-        
+
         return [...prev, msg];
       });
 
@@ -253,11 +336,20 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
     };
   }, []);
 
+  const rowVirtualizer = useVirtualizer({
+    count: messages.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 70,
+    overscan: 10,
+  });
+
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (isOpen && messages.length > 0) {
+      setTimeout(() => {
+        rowVirtualizer.scrollToIndex(messages.length - 1, { align: 'end' });
+      }, 50);
     }
-  }, [messages]);
+  }, [messages.length, isOpen, rowVirtualizer]);
 
   const sendMessage = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -453,7 +545,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
         onTouchStart={handlePressStart}
         onTouchEnd={handlePressEnd}
         className={cn(
-          "flex flex-col max-w-[90%] group relative mb-2 select-none",
+          "flex flex-col max-w-[90%] group relative select-none",
           msg.senderId === userId ? "ml-auto items-end" : "items-start"
         )}
         onDoubleClick={() => setReplyTo(msg)}
@@ -526,9 +618,17 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
                 </div>
               </form>
             ) : msg.type === 'image' ? (
-              <img src={msg.fileUrl} alt="Shared" className="max-w-full rounded-lg" />
+              <img
+                src={msg.fileUrl}
+                alt="Shared"
+                className="max-w-full rounded-lg cursor-zoom-in hover:opacity-90 transition-opacity"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFullscreenImage(msg.fileUrl!);
+                }}
+              />
             ) : msg.type === 'voice' ? (
-              <audio src={msg.fileUrl} controls className="h-8 w-40 filter invert" />
+              <VoiceMessage url={msg.fileUrl!} />
             ) : (
               msg.content
             )}
@@ -586,27 +686,54 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
       {/* Fullscreen backdrop */}
       {isFullscreen && <div className="fixed inset-0 bg-black/70 z-40" onClick={() => setIsFullscreen(false)} />}
 
+      {/* Img Viewer Backdrop */}
+      <AnimatePresence>
+        {fullscreenImage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4 cursor-zoom-out"
+            onClick={() => setFullscreenImage(null)}
+          >
+            <motion.img
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              src={fullscreenImage}
+              alt="Fullscreen"
+              className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl"
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <Draggable
         nodeRef={draggableRef}
         cancel=".no-drag, .chat-header-buttons button"
-        disabled={isFullscreen || mobile}
+        disabled={isFullscreen || (mobile && !isRoomFullscreen) || (isRoomFullscreen && isOpen)}
         onStart={() => setIsDragging(true)}
         onStop={() => setIsDragging(false)}
       >
         <div
           ref={draggableRef}
           className={cn(
-            "fixed z-50 flex flex-col",
+            "z-50 flex flex-col",
+            isRoomFullscreen && isOpen ? "justify-start !transform-none" : "justify-end",
             !isDragging && "transition-all duration-200",
             isFullscreen
-              ? "inset-2 sm:inset-4"
-              : isOpen
-                ? "bottom-4 right-4"
-                : "bottom-4 right-4 w-14 h-14"
+              ? "fixed inset-2 sm:inset-4"
+              : isRoomFullscreen
+                ? isOpen
+                  ? "relative flex-shrink-0 h-full right-0"
+                  : "fixed bottom-4 right-4 w-14 h-14 cursor-move"
+                : isOpen
+                  ? (mobile ? "fixed inset-x-0 top-0 !transform-none" : "fixed bottom-4 right-4")
+                  : "fixed bottom-4 right-4 w-14 h-14"
           )}
           style={isFullscreen || !isOpen ? undefined : {
-            width: mobile ? (chatSize.w > window.innerWidth ? '90vw' : `${chatSize.w}px`) : `${chatSize.w}px`,
-            bottom: keyboardOffset > 0 ? `${keyboardOffset + 8}px` : undefined,
+            width: isRoomFullscreen ? `${chatSize.w}px` : (mobile ? undefined : `${chatSize.w}px`),
+            bottom: isRoomFullscreen ? undefined : (mobile ? `${keyboardOffset}px` : (keyboardOffset > 0 && !isRoomFullscreen ? `${keyboardOffset + 8}px` : undefined))
           }}
         >
           <AnimatePresence>
@@ -617,13 +744,34 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
                 exit={{ opacity: 0, y: 40 }}
                 transition={{ type: 'spring', stiffness: 320, damping: 28 }}
                 className={cn(
-                  "bg-black/40 backdrop-blur-2xl border border-white/10 shadow-[0_0_50px_-12px_rgba(0,0,0,0.5)] flex flex-col group/chat relative",
-                  mobile ? "rounded-t-3xl border-b-0" : "rounded-3xl"
+                  "border border-white/10 shadow-[0_0_50px_-12px_rgba(0,0,0,0.5)] flex flex-col group/chat relative overflow-hidden",
+                  isRoomFullscreen ? "bg-black/95 backdrop-blur-3xl rounded-none border-y-0" : mobile ? "bg-black/30 backdrop-blur-xl rounded-t-3xl border-b-0" : "bg-black/50 backdrop-blur-2xl rounded-3xl"
                 )}
-                style={{ height: isFullscreen ? '100%' : mobile ? '70vh' : `${chatSize.h}px` }}
+                style={{ height: isRoomFullscreen ? (mobile ? `calc(100vh - ${keyboardOffset}px)` : '100%') : isFullscreen ? '100%' : mobile ? (keyboardOffset > 0 ? `min(100vh, calc(100vh - ${keyboardOffset}px))` : `${chatSize.h}px`) : `${chatSize.h}px`, width: '100%' }}
               >
+                {/* Fullscreen Resizer */}
+                {isRoomFullscreen && isOpen && (
+                  <div
+                    onTouchStart={(e) => startResize(e, 'w')}
+                    onMouseDown={(e) => startResize(e, 'w')}
+                    className="absolute -left-4 inset-y-0 w-8 flex items-center justify-center cursor-ew-resize z-[200] touch-none group/resizer"
+                  >
+                    <div className="h-12 w-1.5 bg-white/20 group-hover/resizer:bg-white/60 transition-colors rounded-full" />
+                  </div>
+                )}
+
+                {/* Mobile Top Drag Handle for Resizing */}
+                {mobile && !isFullscreen && !isRoomFullscreen && (
+                  <div
+                    onTouchStart={(e) => startResize(e, 'n')}
+                    onMouseDown={(e) => startResize(e, 'n')}
+                    className="absolute top-0 inset-x-0 h-6 flex items-center justify-center cursor-ns-resize z-50 pt-1 touch-none"
+                  >
+                    <div className="w-12 h-1 bg-white/40 rounded-full" />
+                  </div>
+                )}
                 {/* 8-Directional Resize Handles - Only show on desktop */}
-                {!isFullscreen && !mobile && (
+                {!isFullscreen && !mobile && !isRoomFullscreen && (
                   <>
                     <div onMouseDown={(e) => startResize(e, 'n')} className="absolute top-0 inset-x-4 h-1 cursor-ns-resize z-50" />
                     <div onMouseDown={(e) => startResize(e, 's')} className="absolute bottom-0 inset-x-4 h-1 cursor-ns-resize z-50" />
@@ -646,19 +794,8 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
                     </div>
                   </div>
                   <div className="chat-header-buttons flex items-center gap-1">
+
                     <button
-                      onClick={() => setIsFullscreen(f => !f)}
-                      className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
-                      title={isFullscreen ? 'Minimize' : 'Fullscreen'}
-                      onTouchEnd={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setIsFullscreen(f => !f);
-                      }}
-                    >
-                      {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-                    </button>
-                    <button 
                       onClick={handleCloseChat}
                       onTouchEnd={handleCloseChat}
                       className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
@@ -669,12 +806,34 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
                   </div>
                 </div>
 
-                <div ref={scrollRef} className="no-drag flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-white/10">
-                  {messages.map((msg) => (
-                    <MessageItem key={msg.id} msg={msg} />
-                  ))}
+                <div ref={scrollRef} className="no-drag flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-white/10 relative">
+                  <div
+                    style={{
+                      height: `${rowVirtualizer.getTotalSize()}px`,
+                      width: '100%',
+                      position: 'relative',
+                    }}
+                  >
+                    {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                      const msg = messages[virtualRow.index];
+                      return (
+                        <div
+                          key={msg.id}
+                          data-index={virtualRow.index}
+                          ref={rowVirtualizer.measureElement}
+                          className="absolute top-0 left-0 w-full"
+                          style={{
+                            transform: `translateY(${virtualRow.start}px)`,
+                            paddingBottom: '8px'
+                          }}
+                        >
+                          <MessageItem msg={msg} />
+                        </div>
+                      )
+                    })}
+                  </div>
                   {typingUsers.size > 0 && (
-                    <div className="text-[10px] italic opacity-40 animate-pulse">
+                    <div className="text-[10px] italic opacity-40 animate-pulse mt-2">
                       {Array.from(typingUsers).join(', ')} typing...
                     </div>
                   )}
@@ -689,9 +848,29 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
                   </div>
                 )}
 
-                <form onSubmit={sendMessage} className="no-drag p-4 bg-white/5 border-t border-white/10">
+                <form onSubmit={sendMessage} className="no-drag p-4 bg-white/5 border-t border-white/10 relative shrink-0">
                   <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept="image/*" className="hidden" />
+
+                  <AnimatePresence>
+                    {showEmojiPicker && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        className="absolute bottom-full right-4 mb-2 z-[100] drop-shadow-2xl"
+                      >
+                        <EmojiPicker
+                          theme={Theme.DARK}
+                          onEmojiClick={(emojiData) => setInput(prev => prev + emojiData.emoji)}
+                        />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
                   <div className="flex items-center gap-2 bg-black/40 rounded-xl px-3 py-2 border border-white/5 focus-within:border-emerald-500/50 transition-colors">
+                    <button type="button" onClick={() => setShowEmojiPicker(p => !p)} className={cn("p-1 transition-colors", showEmojiPicker ? "text-emerald-500" : "hover:text-emerald-500")}>
+                      <Smile className="w-4 h-4" />
+                    </button>
                     <button type="button" onClick={() => fileInputRef.current?.click()} className="p-1 hover:text-emerald-500">
                       <ImageIcon className="w-4 h-4" />
                     </button>
@@ -711,7 +890,7 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
                       onChange={(e) => { setInput(e.target.value); handleTyping(true); }}
                       onBlur={() => handleTyping(false)}
                       placeholder={isRecording ? "Recording..." : "Type a message..."}
-                      className="flex-1 bg-transparent outline-none text-sm"
+                      className="flex-1 bg-transparent outline-none text-sm w-full"
                       disabled={isRecording}
                     />
                     <button type="submit" className="p-1 text-emerald-500">
@@ -722,7 +901,13 @@ export const Chat: React.FC<ChatProps> = ({ roomId, userId, username }) => {
               </motion.div>
             ) : (
               <button
-                onClick={() => { setIsOpen(true); }}
+                onClick={() => { if (!isDragging) setIsOpen(true); }}
+                onTouchEnd={(e) => {
+                  if (!isDragging) {
+                    e.preventDefault();
+                    setIsOpen(true);
+                  }
+                }}
                 className="w-14 h-14 bg-emerald-600 rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform relative"
               >
                 <MessageSquare className="w-6 h-6 text-white" />

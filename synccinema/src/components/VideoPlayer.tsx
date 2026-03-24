@@ -9,13 +9,15 @@ interface VideoPlayerProps {
   isHost: boolean;
   roomId: string;
   userId: string;
+  onToggleFullscreen?: () => void;
 }
 
 const Player = (ReactPlayer as any).default || ReactPlayer;
 
-export const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, isHost, roomId, userId }) => {
+export const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, isHost, roomId, userId, onToggleFullscreen }) => {
   const playerRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const lastTapRef = useRef<{ time: number; side: string }>({ time: 0, side: '' });
   const [playing, setPlaying] = useState(false);
   const [volume, setVolume] = useState(0.8);
   const [muted, setMuted] = useState(false);
@@ -133,12 +135,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, isHost, roomId, u
   };
 
   const handleFullscreen = () => {
+    if (onToggleFullscreen) {
+      onToggleFullscreen();
+      return;
+    }
     if (!document.fullscreenElement) {
       containerRef.current?.requestFullscreen().catch(err => {
         console.error(`Error attempting to enable fullscreen: ${err.message}`);
       });
     } else {
       document.exitFullscreen();
+    }
+  };
+
+  const handleMobileTap = (e: React.MouseEvent, side: string) => {
+    const now = Date.now();
+    const DOUBLE_TAP_DELAY = 300;
+
+    if (lastTapRef.current.side === side && now - lastTapRef.current.time < DOUBLE_TAP_DELAY) {
+      handleSkip(side === 'left' ? -10 : 10);
+      lastTapRef.current = { time: 0, side: '' };
+    } else {
+      lastTapRef.current = { time: now, side };
     }
   };
 
@@ -183,10 +201,35 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, isHost, roomId, u
       />
 
       {/* Gesture Overlays for Click and Double-Tap */}
-      <div className="absolute inset-x-0 top-0 bottom-20 flex z-10">
+      {/* Desktop: click to play/pause */}
+      <div className="absolute inset-x-0 top-0 bottom-20 z-10 hidden md:flex">
         <div className="flex-1" onDoubleClick={() => handleSkip(-10)} onClick={handlePlayPause} />
         <div className="w-1/4" onClick={handlePlayPause} />
         <div className="flex-1" onDoubleClick={() => handleSkip(10)} onClick={handlePlayPause} />
+      </div>
+
+      {/* Mobile: custom double-tap tracking for reliable mobile execution */}
+      <div className="absolute inset-x-0 top-0 bottom-20 z-10 flex md:hidden touch-manipulation">
+        <div className="flex-1" onClick={(e) => handleMobileTap(e, 'left')} />
+        <div className="w-1/4" />
+        <div className="flex-1" onClick={(e) => handleMobileTap(e, 'right')} />
+      </div>
+
+      {/* Center Play/Pause Button for Mobile */}
+      <div className={cn(
+        "absolute inset-0 flex items-center justify-center z-20 pointer-events-none md:hidden transition-opacity duration-300",
+        showControls ? "opacity-100" : "opacity-0"
+      )}>
+        <button 
+          onClick={(e) => {
+            e.stopPropagation();
+            handlePlayPause();
+            revealControls();
+          }}
+          className="pointer-events-auto p-4 rounded-full bg-black/40 text-white hover:bg-emerald-500/80 transition-colors backdrop-blur-md"
+        >
+          {playing ? <Pause size={48} className="fill-current" /> : <Play size={48} className="fill-current ml-2" />}
+        </button>
       </div>
 
       <div className={cn(
