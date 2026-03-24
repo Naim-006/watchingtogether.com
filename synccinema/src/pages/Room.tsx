@@ -70,6 +70,25 @@ export const Room: React.FC = () => {
   const [participantsCount, setParticipantsCount] = useState(0);
   const callRef = useRef<CallHandle>(null);
   const videoFileRef = useRef<HTMLInputElement>(null);
+  
+  const fullscreenContainerRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handleFSChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFSChange);
+    return () => document.removeEventListener('fullscreenchange', handleFSChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      fullscreenContainerRef.current?.requestFullscreen().catch(err => console.error(err));
+    } else {
+      document.exitFullscreen();
+    }
+  };
 
   useEffect(() => {
     socket.connect();
@@ -421,16 +440,23 @@ export const Room: React.FC = () => {
           <div className="absolute inset-0 bg-gradient-radial from-emerald-500/5 via-transparent to-transparent pointer-events-none" />
 
           <div className="w-full max-w-5xl z-10">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={videoUrl}
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="shadow-[0_0_100px_-20px_rgba(16,185,129,0.15)] rounded-2xl overflow-hidden"
-              >
-                <VideoPlayer url={videoUrl} isHost={userRole === 'host'} roomId={roomId || ''} userId={userId} />
-              </motion.div>
-            </AnimatePresence>
+            <div ref={fullscreenContainerRef} className={cn("transition-all duration-300 relative w-full", isFullscreen && "bg-black w-screen h-screen flex flex-row items-center justify-center overflow-hidden")}>
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={videoUrl}
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className={cn("shadow-[0_0_100px_-20px_rgba(16,185,129,0.15)] overflow-hidden transition-all duration-300", isFullscreen ? "flex-1 h-full flex flex-col items-center justify-center rounded-none" : "rounded-2xl w-full")}
+                >
+                  <div className={cn("transition-all duration-300 relative max-h-[100vh]", isFullscreen ? "w-full max-w-[177vh] max-h-screen aspect-video" : "w-full aspect-video")}>
+                    <VideoPlayer url={videoUrl} isHost={userRole === 'host'} roomId={roomId || ''} userId={userId} onToggleFullscreen={toggleFullscreen} />
+                  </div>
+                </motion.div>
+              </AnimatePresence>
+
+              {/* Chat is rendered natively inside the fullscreen wrapper to guarantee exact native layering */}
+              <Chat roomId={roomId || ''} userId={userId} username={username} isRoomFullscreen={isFullscreen} />
+            </div>
 
             <div className="mt-4 md:mt-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
               <div>
@@ -451,7 +477,6 @@ export const Room: React.FC = () => {
         </section>
       </main>
 
-      <Chat roomId={roomId || ''} userId={userId} username={username} />
       <Call 
         ref={callRef}
         roomId={roomId || ''} 
